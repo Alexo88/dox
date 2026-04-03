@@ -1,0 +1,935 @@
+/* ═══════════════════════════════════════════
+   DocxLite — App principal
+   Orquestador: FileHandler, Sectionizer,
+   VirtualScroller, SearchEngine, ThemeManager
+   ═══════════════════════════════════════════ */
+
+'use strict';
+
+/* ─────────────────────────────────────────
+   Refs DOM
+   ───────────────────────────────────────── */
+const $ = (id) => document.getElementById(id);
+const toolbar = $('toolbar');
+const docTitle = $('doc-title');
+const btnOpen = $('btn-open');
+const btnSearch = $('btn-search');
+const btnTheme = $('btn-theme');
+const btnEdit = $( 'btn-edit' );
+const fileInput = $('file-input');
+const dropzone = $('dropzone');
+const viewer = $('viewer');
+const markdownEditor = $( 'markdown-editor' );
+const progress = $('progress');
+const progressBar = $('progress-bar');
+const progressText = $('progress-text');
+
+// Search
+const searchBar = $('search-bar');
+const searchInput = $('search-input');
+const searchCount = $('search-count');
+const searchPrev = $('search-prev');
+const searchNext = $('search-next');
+const searchClose = $('search-close');
+
+// Theme icons
+const iconMoon = $('icon-moon');
+const iconSun = $('icon-sun');
+
+
+/* ─────────────────────────────────────────
+   Constantes
+   ───────────────────────────────────────── */
+const SECTION_SIZE = 20;   // Nodos top-level por sección
+const OBSERVER_MARGIN = '100%'; // Pre-cargar 1 viewport arriba y abajo
+const APP_VERSION = '0.2.0';
+const MARKDOWN_VERSION_LIMIT = 10;
+
+// Worker factory (replaceable by build.js)
+const createWorker = () => new Worker('docx.worker.js'); // DOCXLITE_WORKER
+
+// Markdown helpers
+function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function inlineMarkdown(text) {
+    let s = escapeHtml(text);
+    const codeSpans = [];
+    s = s.replace(/`([^`]+)`/g, (m, p1) => {
+        codeSpans.push(p1);
+        return `@@CODE${codeSpans.length - 1}@@`;
+    });
+
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    s = s.replace(/_([^_]+)_/g, '<em>$1</em>');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, href) => {
+        const safeHref = href.replace(/"/g, '&quot;');
+        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    });
+
+    s = s.replace(/@@CODE(\d+)@@/g, (m, idx) => {
+        const code = codeSpans[parseInt(idx, 10)] || '';
+        return `<code>${code}</code>`;
+    });
+
+    return s;
+}
+
+function markdownToHtml(markdown) {
+    const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalized.split('\n');
+    const html = [];
+    let inCode = false;
+    let listType = null;
+
+    const closeList = () => {
+        if (listType) {
+            html.push(`</${listType}>`);
+            listType = null;
+        }
+    };
+
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith('```')) {
+            if (!inCode) {
+                closeList();
+                inCode = true;
+                html.push('<pre><code>');
+            } else {
+                inCode = false;
+                html.push('</code></pre>');
+            }
+            return;
+        }
+
+        if (inCode) {
+            html.push(escapeHtml(line));
+            return;
+        }
+
+        if (trimmed === '') {
+            closeList();
+            return;
+        }
+
+        const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+            closeList();
+            const level = headingMatch[1].length;
+            html.push(`<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`);
+            return;
+        }
+
+        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+            closeList();
+            html.push('<hr>');
+            return;
+        }
+
+        if (trimmed.startsWith('> ')) {
+            closeList();
+            html.push(`<blockquote>${inlineMarkdown(trimmed.slice(2))}</blockquote>`);
+            return;
+        }
+
+        const ulMatch = trimmed.match(/^[-*+]\s+(.*)$/);
+        const olMatch = trimmed.match(/^\d+\.\s+(.*)$/);
+        if (ulMatch || olMatch) {
+            const nextType = ulMatch ? 'ul' : 'ol';
+            if (listType !== nextType) {
+                closeList();
+                listType = nextType;
+                html.push(`<${listType}>`);
+            }
+            const itemText = ulMatch ? ulMatch[1] : olMatch[1];
+            html.push(`<li>${inlineMarkdown(itemText)}</li>`);
+            return;
+        }
+
+        closeList();
+        html.push(`<p>${inlineMarkdown(trimmed)}</p>`);
+    });
+
+    closeList();
+    if (inCode) {
+        html.push('</code></pre>');
+    }
+
+    return html.join('\n');
+}
+
+
+/* ═══════════════════════════════════════════
+/* ═══════════════════════════════════════════
+   1. ThemeManager
+   ═══════════════════════════════════════════ */
+const ThemeManager = {
+    init() {
+        // Respetar preferencia guardada, fallback a prefers-color-scheme
+        const saved = localStorage.getItem('docxlite-theme');
+        if (saved) {
+            document.documentElement.setAttribute('data-theme', saved);
+        } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+        this._updateIcon();
+
+        btnTheme.addEventListener('click', () => this.toggle());
+    },
+
+    toggle() {
+        const current = document.documentElement.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('docxlite-theme', next);
+        this._updateIcon();
+    },
+
+    _updateIcon() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        iconMoon.style.display = isDark ? 'block' : 'none';
+        iconSun.style.display = isDark ? 'none' : 'block';
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   2. Progress
+   ═══════════════════════════════════════════ */
+const Progress = {
+    show(text, pct) {
+        progress.classList.remove('hidden');
+        progressText.textContent = text;
+        progressBar.style.width = pct + '%';
+    },
+    hide() {
+        progressBar.style.width = '100%';
+        setTimeout(() => {
+            progress.classList.add('hidden');
+            progressBar.style.width = '0%';
+        }, 300);
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   3. Sectionizer
+   ═══════════════════════════════════════════ */
+const Sectionizer = {
+    /**
+     * Parsea HTML y agrupa nodos top-level en secciones.
+     * @param {string} html — HTML completo de mammoth
+     * @returns {Array<{id: number, html: string, height: number|null}>}
+     */
+    parse(html) {
+        // Parsear en un template (no activa scripts, no carga imágenes)
+        const tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        const nodes = Array.from(tpl.content.childNodes);
+
+        const sections = [];
+        let sectionId = 0;
+
+        for (let i = 0; i < nodes.length; i += SECTION_SIZE) {
+            const chunk = nodes.slice(i, i + SECTION_SIZE);
+            // Serializar chunk a HTML string para storage
+            const wrapper = document.createElement('div');
+            chunk.forEach(node => wrapper.appendChild(node.cloneNode(true)));
+
+            sections.push({
+                id: sectionId++,
+                html: wrapper.innerHTML,
+                height: null // Se medirá después del primer render
+            });
+        }
+
+        // Liberar el template
+        tpl.innerHTML = '';
+
+        return sections;
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   4. VirtualScroller
+   ═══════════════════════════════════════════ */
+const VirtualScroller = {
+    sections: [],       // Datos de cada sección
+    elements: [],       // Refs DOM de cada <div.section>
+    observer: null,     // IntersectionObserver
+    materialized: new Set(), // IDs de secciones con DOM real
+
+    /**
+     * Inicializa el viewer con las secciones parseadas.
+     * @param {Array} sections — del Sectionizer
+     */
+    init(sections, options = {}) {
+        this.sections = sections;
+        this.elements = [];
+        this.materialized = new Set();
+        this.onMeasured = typeof options.onMeasured === 'function' ? options.onMeasured : null;
+        viewer.innerHTML = '';
+
+        // Crear un div por cada sección
+        const fragment = document.createDocumentFragment();
+        sections.forEach((section, idx) => {
+            const el = document.createElement('div');
+            el.className = 'section';
+            el.dataset.sectionId = idx;
+            fragment.appendChild(el);
+            this.elements.push(el);
+        });
+        viewer.appendChild(fragment);
+
+        // Render inicial: materializar todas para medir alturas
+        this._measureAll();
+
+        // Configurar IntersectionObserver
+        this._setupObserver();
+    },
+
+    /**
+     * Materializa todas las secciones, mide alturas, luego desmaterializa las lejanas.
+     * Usamos requestIdleCallback para no bloquear.
+     */
+    _measureAll() {
+        const total = this.sections.length;
+        let idx = 0;
+
+        const measureBatch = (deadline) => {
+            // Procesar en lotes según tiempo disponible
+            while (idx < total && (deadline ? deadline.timeRemaining() > 5 : true)) {
+                this._materialize(idx);
+                idx++;
+            }
+
+            if (idx < total) {
+                // Aún quedan secciones — continuar en idle
+                if (typeof requestIdleCallback !== 'undefined') {
+                    requestIdleCallback(measureBatch);
+                } else {
+                    requestAnimationFrame(() => measureBatch(null));
+                }
+            } else {
+                // Todas medidas — ahora medir alturas y configurar observer
+                requestAnimationFrame(() => {
+                    this.elements.forEach((el, i) => {
+                        this.sections[i].height = el.offsetHeight;
+                    });
+
+                    // Desmaterializar secciones fuera del viewport inicial
+                    this._dematerializeDistant();
+                    this._setupObserver();
+                    if (this.onMeasured) this.onMeasured();
+                });
+            }
+        };
+
+        if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(measureBatch);
+        } else {
+            measureBatch(null);
+        }
+    },
+
+    /**
+     * Desmaterializa secciones que están lejos del viewport actual.
+     */
+    _dematerializeDistant() {
+        const viewportTop = window.scrollY;
+        const viewportBottom = viewportTop + window.innerHeight;
+        const buffer = window.innerHeight * 2; // 2x viewport buffer
+
+        this.elements.forEach((el, idx) => {
+            const rect = el.getBoundingClientRect();
+            const elTop = rect.top + window.scrollY;
+            const elBottom = elTop + rect.height;
+
+            // Si está fuera del buffer, desmaterializar
+            if (elBottom < viewportTop - buffer || elTop > viewportBottom + buffer) {
+                this._dematerialize(idx);
+            }
+        });
+    },
+
+    /**
+     * Configura IntersectionObserver para virtualización dinámica.
+     */
+    _setupObserver() {
+        if (this.observer) this.observer.disconnect();
+
+        this.observer = new IntersectionObserver(
+            (entries) => this._handleIntersection(entries),
+            { rootMargin: OBSERVER_MARGIN }
+        );
+
+        this.elements.forEach(el => this.observer.observe(el));
+    },
+
+    /**
+     * Callback del IntersectionObserver.
+     * Materializa secciones que entran, desmaterializa las que salen.
+     */
+    _handleIntersection(entries) {
+        entries.forEach(entry => {
+            const idx = parseInt(entry.target.dataset.sectionId, 10);
+            if (entry.isIntersecting) {
+                this._materialize(idx);
+            } else {
+                this._dematerialize(idx);
+            }
+        });
+    },
+
+    /**
+     * Inyecta HTML real en una sección.
+     */
+    _materialize(idx) {
+        if (this.materialized.has(idx)) return;
+        const el = this.elements[idx];
+        const section = this.sections[idx];
+
+        el.innerHTML = section.html;
+        el.classList.remove('section--placeholder');
+        el.style.height = '';
+
+        // Lazy loading + async decoding para imágenes
+        const imgs = el.querySelectorAll('img');
+        imgs.forEach(img => {
+            img.loading = 'lazy';
+            img.decoding = 'async';
+        });
+
+        this.materialized.add(idx);
+    },
+
+    /**
+     * Reemplaza contenido con placeholder de altura fija.
+     */
+    _dematerialize(idx) {
+        if (!this.materialized.has(idx)) return;
+        const el = this.elements[idx];
+        const section = this.sections[idx];
+
+        // Guardar altura medida si no se tenía
+        if (!section.height) {
+            section.height = el.offsetHeight;
+        }
+
+        el.innerHTML = '';
+        el.classList.add('section--placeholder');
+        el.style.height = section.height + 'px';
+
+        this.materialized.delete(idx);
+    },
+
+    /**
+     * Fuerza materialización de una sección específica (para búsqueda).
+     * @returns {HTMLElement} el elemento de la sección
+     */
+    ensureMaterialized(idx) {
+        this._materialize(idx);
+        return this.elements[idx];
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   5. SearchEngine
+   ═══════════════════════════════════════════ */
+const SearchEngine = {
+    results: [],    // Array de { sectionIdx, nodeInfo }
+    currentIdx: -1,
+    isOpen: false,
+    _debounceTimer: null,
+
+    init() {
+        // Ctrl+F intercepta búsqueda nativa
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                this.open();
+            }
+            if (e.key === 'Escape' && this.isOpen) {
+                this.close();
+            }
+            // Enter = siguiente, Shift+Enter = anterior
+            if (e.key === 'Enter' && this.isOpen) {
+                e.preventDefault();
+                e.shiftKey ? this.prev() : this.next();
+            }
+        });
+
+        btnSearch.addEventListener('click', () => this.open());
+        searchClose.addEventListener('click', () => this.close());
+        searchPrev.addEventListener('click', () => this.prev());
+        searchNext.addEventListener('click', () => this.next());
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(this._debounceTimer);
+            this._debounceTimer = setTimeout(() => this.search(searchInput.value), 200);
+        });
+    },
+
+    open() {
+        searchBar.classList.remove('hidden');
+        searchInput.focus();
+        searchInput.select();
+        this.isOpen = true;
+    },
+
+    close() {
+        searchBar.classList.add('hidden');
+        this.isOpen = false;
+        this.clearHighlights();
+        this.results = [];
+        this.currentIdx = -1;
+        searchInput.value = '';
+        searchCount.textContent = '';
+    },
+
+    reset() {
+        if (this.isOpen) {
+            this.close();
+        } else {
+            this.clearHighlights();
+            this.results = [];
+            this.currentIdx = -1;
+            searchInput.value = '';
+            searchCount.textContent = '';
+        }
+    },
+
+    /**
+     * Busca texto en TODAS las secciones (incluyendo las no renderizadas).
+     * Opera sobre el HTML almacenado, no sobre el DOM visible.
+     */
+    search(query) {
+        this.clearHighlights();
+        this.results = [];
+        this.currentIdx = -1;
+
+        if (!query || query.length < 2) {
+            searchCount.textContent = '';
+            return;
+        }
+
+        const lowerQuery = query.toLowerCase();
+
+        // Buscar en el HTML de cada sección
+        VirtualScroller.sections.forEach((section, sectionIdx) => {
+            // Crear un parser temporal para buscar en texto
+            const tpl = document.createElement('template');
+            tpl.innerHTML = section.html;
+            const text = tpl.content.textContent || '';
+
+            // Contar ocurrencias en esta sección
+            let pos = 0;
+            let lowerText = text.toLowerCase();
+            while ((pos = lowerText.indexOf(lowerQuery, pos)) !== -1) {
+                this.results.push({ sectionIdx, offset: pos });
+                pos += lowerQuery.length;
+            }
+            tpl.innerHTML = '';
+        });
+
+        searchCount.textContent = this.results.length > 0
+            ? `0/${this.results.length}`
+            : 'Sin resultados';
+
+        if (this.results.length > 0) {
+            this.currentIdx = 0;
+            this._highlightCurrent();
+        }
+    },
+
+    /**
+     * Highlight un resultado específico, materializando la sección si es necesario.
+     */
+    _highlightCurrent() {
+        if (this.currentIdx < 0 || this.currentIdx >= this.results.length) return;
+
+        // Limpiar highlight activo anterior
+        const prevActive = viewer.querySelector('mark.search-highlight.active');
+        if (prevActive) prevActive.classList.remove('active');
+
+        const result = this.results[this.currentIdx];
+        const el = VirtualScroller.ensureMaterialized(result.sectionIdx);
+
+        // Highlight con TreeWalker para precisión
+        this._highlightInSection(el, searchInput.value);
+
+        // Marcar el resultado actual como activo
+        const marks = el.querySelectorAll('mark.search-highlight');
+        let markIdx = 0;
+
+        // Contar cuántos resultados hay antes de esta sección
+        let countBefore = 0;
+        for (let i = 0; i < this.results.length; i++) {
+            if (this.results[i].sectionIdx === result.sectionIdx) {
+                if (i === this.currentIdx) {
+                    markIdx = this.currentIdx - countBefore;
+                    break;
+                }
+            } else if (this.results[i].sectionIdx < result.sectionIdx) {
+                countBefore++;
+            }
+        }
+
+        // Encontrar el mark correcto dentro de la sección
+        let inSectionIdx = 0;
+        for (let i = 0; i < this.currentIdx; i++) {
+            if (this.results[i].sectionIdx === result.sectionIdx) {
+                inSectionIdx++;
+            }
+        }
+
+        if (marks[inSectionIdx]) {
+            marks[inSectionIdx].classList.add('active');
+            marks[inSectionIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        searchCount.textContent = `${this.currentIdx + 1}/${this.results.length}`;
+    },
+
+    /**
+     * Aplica <mark> highlights a los text nodes de una sección.
+     */
+    _highlightInSection(container, query) {
+        // Primero limpiar marks existentes en esta sección
+        container.querySelectorAll('mark.search-highlight').forEach(mark => {
+            const parent = mark.parentNode;
+            parent.replaceChild(document.createTextNode(mark.textContent), mark);
+            parent.normalize();
+        });
+
+        if (!query) return;
+
+        const lowerQuery = query.toLowerCase();
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            textNodes.push(node);
+        }
+
+        textNodes.forEach(textNode => {
+            const text = textNode.textContent;
+            const lowerText = text.toLowerCase();
+            if (lowerText.indexOf(lowerQuery) === -1) return;
+
+            const fragment = document.createDocumentFragment();
+            let lastIdx = 0;
+
+            let idx = lowerText.indexOf(lowerQuery);
+            while (idx !== -1) {
+                // Texto antes del match
+                if (idx > lastIdx) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
+                }
+                // Mark
+                const mark = document.createElement('mark');
+                mark.className = 'search-highlight';
+                mark.textContent = text.slice(idx, idx + query.length);
+                fragment.appendChild(mark);
+
+                lastIdx = idx + query.length;
+                idx = lowerText.indexOf(lowerQuery, lastIdx);
+            }
+
+            // Texto restante
+            if (lastIdx < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIdx)));
+            }
+
+            textNode.parentNode.replaceChild(fragment, textNode);
+        });
+    },
+
+    next() {
+        if (this.results.length === 0) return;
+        this.currentIdx = (this.currentIdx + 1) % this.results.length;
+        this._highlightCurrent();
+    },
+
+    prev() {
+        if (this.results.length === 0) return;
+        this.currentIdx = (this.currentIdx - 1 + this.results.length) % this.results.length;
+        this._highlightCurrent();
+    },
+
+    clearHighlights() {
+        viewer.querySelectorAll('mark.search-highlight').forEach(mark => {
+            const parent = mark.parentNode;
+            if (parent) {
+                parent.replaceChild(document.createTextNode(mark.textContent), mark);
+                parent.normalize();
+            }
+        });
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   6. FileHandler
+   ═══════════════════════════════════════════ */
+const FileHandler = {
+    worker: null,
+    currentMarkdown: null,
+    currentMarkdownName: null,
+    isEditing: false,
+
+    init() {
+        // Crear Web Worker
+        // Comentamos el worker para debug directo
+        // this.worker = createWorker();
+        // this.worker.onmessage = (e) => this._onWorkerMessage(e.data);
+        console.log('[LOG] Modo de diagnóstico: Worker desactivado. Usando Mammoth directo.');
+
+        // Drag & Drop
+        dropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropzone.classList.add('drag-over');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('drag-over');
+        });
+        dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) this.handleFile(file);
+        });
+
+        // Click en dropzone abre file picker
+        dropzone.addEventListener('click', () => fileInput.click());
+
+        // Botón abrir
+        btnOpen.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) this.handleFile(e.target.files[0]);
+            fileInput.value = ''; // Reset para permitir re-seleccionar mismo archivo
+        });
+
+        // Botón editar markdown
+        if (btnEdit) {
+            btnEdit.addEventListener('click', () => this.toggleMarkdownEdit());
+        }
+
+        // También soportar drop en toda la ventana cuando el viewer está activo
+        document.addEventListener('dragover', (e) => e.preventDefault());
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && !dropzone.classList.contains('hidden')) return; // Ya manejado por dropzone
+            if (file) this.handleFile(file);
+        });
+
+        // Ctrl+O para abrir
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                e.preventDefault();
+                fileInput.click();
+            }
+        });
+    },
+
+    /**
+     * Procesa un archivo .docx o markdown
+     * @param {File} file
+     */
+    handleFile(file) {
+        const lowerName = file.name.toLowerCase();
+        const isDocx = lowerName.endsWith('.docx');
+        const isMarkdown = lowerName.endsWith('.md') || lowerName.endsWith('.markdown');
+
+        // Validar extension
+        if (!isDocx && !isMarkdown) {
+            alert('Solo se admiten archivos .docx, .md o .markdown');
+            return;
+        }
+
+        // Resetear busqueda para evitar resultados antiguos
+        SearchEngine.reset();
+
+        // Mostrar nombre del archivo
+        docTitle.textContent = file.name;
+        document.title = file.name + ' — DocxLite';
+
+        if (isMarkdown) {
+            this.currentMarkdownName = file.name;
+            Progress.show('Leyendo markdown...', 30);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                Progress.show('Renderizando markdown...', 70);
+                const text = e.target.result || '';
+                this._renderMarkdown(String(text));
+            };
+            reader.onerror = () => {
+                Progress.show('Error al leer el archivo', 0);
+                setTimeout(Progress.hide, 2000);
+            };
+            reader.readAsText(file);
+            return;
+        }
+
+        // Reset estado markdown
+        this.currentMarkdown = null;
+        this.currentMarkdownName = null;
+        this.isEditing = false;
+        if (btnEdit) btnEdit.classList.add('hidden');
+        if (markdownEditor) markdownEditor.classList.add('hidden');
+
+        console.log('[LOG] Procesando DOCX:', file.name);
+        // Reset viewer
+        viewer.innerHTML = '';
+        viewer.classList.remove('hidden');
+        dropzone.classList.add('hidden');
+
+        // Leer archivo DOCX
+        Progress.show('Leyendo archivo...', 20);
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            console.log('[LOG] Archivo leído. Procesando con Mammoth directo (Main Thread)...');
+            Progress.show('Procesando (Directo)...', 50);
+            const arrayBuffer = e.target.result;
+            
+            try {
+                const result = await mammoth.convertToHtml({ arrayBuffer });
+                console.log('[LOG] Conversión exitosa. Renderizando:', result.value.length, 'chars');
+                this._renderHtml(result.value, result.messages);
+            } catch (err) {
+                console.error('[ERRORE] Mammoth directo:', err);
+                Progress.show('Error: ' + err.message, 0);
+                setTimeout(Progress.hide, 3000);
+            }
+        };
+        reader.onerror = () => {
+            Progress.show('Error al leer el archivo', 0);
+            setTimeout(Progress.hide, 2000);
+        };
+        reader.readAsArrayBuffer(file);
+    },
+
+    toggleMarkdownEdit() {
+        if (!this.currentMarkdown || !markdownEditor || !btnEdit) return;
+
+        if (this.isEditing) {
+            this.currentMarkdown = markdownEditor.value;
+            saveMarkdownVersion(this.currentMarkdownName, this.currentMarkdown);
+            this.isEditing = false;
+            btnEdit.textContent = 'Editar';
+            this._renderMarkdown(this.currentMarkdown);
+        } else {
+            this.isEditing = true;
+            btnEdit.textContent = 'Ver';
+            SearchEngine.reset();
+            markdownEditor.value = this.currentMarkdown;
+            markdownEditor.classList.remove('hidden');
+            viewer.classList.add('hidden');
+        }
+    },
+
+    _renderMarkdown(sourceText) {
+        this.currentMarkdown = sourceText;
+        SearchEngine.reset();
+        saveMarkdownVersion(this.currentMarkdownName, sourceText);
+        this.isEditing = false;
+        if (btnEdit) btnEdit.classList.remove('hidden');
+        if (btnEdit) btnEdit.textContent = 'Editar';
+        this._renderHtml(markdownToHtml(sourceText));
+    },
+
+    _renderHtml(html, messages) {
+        const sections = Sectionizer.parse(html);
+
+        // Mostrar el viewer, ocultar editor
+        if (markdownEditor) markdownEditor.classList.add('hidden');
+        viewer.classList.remove('hidden');
+
+        // Iniciar renderizado virtual
+        VirtualScroller.init(sections, { onMeasured: () => Progress.hide() });
+
+        // Log warnings de mammoth (si hay)
+        if (messages && messages.length > 0) {
+            console.info('Mammoth warnings:', messages);
+        }
+    },
+
+    /**
+     * Respuesta del Worker
+     */
+    _onWorkerMessage(data) {
+        console.log('[LOG] Mensaje recibido del Worker:', data.type);
+        if (data.type === 'error') {
+            console.error('[ERRORE] Worker reportó:', data.error);
+            Progress.show('Error: ' + data.error, 0);
+            setTimeout(Progress.hide, 3000);
+            return;
+        }
+
+        if (data.type === 'success') {
+            console.log('[LOG] DOCX convertido. Longitud HTML:', data.html.length);
+            Progress.show('Renderizando...', 80);
+
+            // Sectionizar el HTML
+            const html = data.html;
+            data.html = null;
+
+            this._renderHtml(html, data.messages);
+        }
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   7. Init
+   ═══════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+    localStorage.setItem('docxlite-version', APP_VERSION);
+    ThemeManager.init();
+    SearchEngine.init();
+    FileHandler.init();
+});
+
+
+
+
+
+
+
+
+
+function saveMarkdownVersion(name, text) {
+    if (!name) return;
+    const key = `docxlite-md-versions:${name}`;
+    let versions = [];
+    try {
+        versions = JSON.parse(localStorage.getItem(key) || '[]');
+    } catch (err) {
+        versions = [];
+    }
+
+    const last = versions.length ? versions[versions.length - 1] : null;
+    if (last && last.text === text) return;
+
+    versions.push({ ts: Date.now(), text });
+    if (versions.length > MARKDOWN_VERSION_LIMIT) {
+        versions = versions.slice(-MARKDOWN_VERSION_LIMIT);
+    }
+
+    try {
+        localStorage.setItem(key, JSON.stringify(versions));
+    } catch (err) {
+        // ignore storage errors
+    }
+}

@@ -1,0 +1,85 @@
+/**
+ * DocxLite — Build Script
+ * Empaqueta todo en un unico archivo HTML portable.
+ *
+ * Uso: node build.js
+ * Salida: DocxLite.html (todo incluido, 100% offline)
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = __dirname;
+const OUT = path.join(ROOT, 'DocxLite.html');
+
+const STYLE_START = '<!-- DOCXLITE:STYLE_START -->';
+const STYLE_END = '<!-- DOCXLITE:STYLE_END -->';
+const SCRIPTS_START = '<!-- DOCXLITE:SCRIPTS_START -->';
+const SCRIPTS_END = '<!-- DOCXLITE:SCRIPTS_END -->';
+
+function replaceBlock(source, start, end, replacement) {
+    const startIdx = source.indexOf(start);
+    const endIdx = source.indexOf(end);
+    if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+        throw new Error(`Missing build markers: ${start} ... ${end}`);
+    }
+    return source.slice(0, startIdx + start.length) + '\n' + replacement + '\n' + source.slice(endIdx);
+}
+
+console.log('\n  🔨 DocxLite Builder\n');
+
+// ─── Leer archivos fuente ───
+console.log('  → Leyendo archivos fuente...');
+const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf-8');
+const css = fs.readFileSync(path.join(ROOT, 'style.css'), 'utf-8');
+const appJs = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf-8');
+const workerJs = fs.readFileSync(path.join(ROOT, 'docx.worker.js'), 'utf-8');
+const mammoth = fs.readFileSync(path.join(ROOT, 'lib', 'mammoth.browser.min.js'), 'utf-8');
+
+console.log(`     mammoth.js: ${(mammoth.length / 1024).toFixed(1)} KB`);
+console.log(`     app.js:     ${(appJs.length / 1024).toFixed(1)} KB`);
+console.log(`     worker.js:  ${(workerJs.length / 1024).toFixed(1)} KB`);
+console.log(`     style.css:  ${(css.length / 1024).toFixed(1)} KB`);
+
+// ─── Construir Worker con mammoth inlined ───
+console.log('  → Inlineando mammoth.js en Worker...');
+const workerSource = workerJs.replace(
+    "importScripts('lib/mammoth.browser.min.js');",
+    '// [mammoth.js inlined by build.js]\n' + mammoth
+);
+
+// ─── Modificar app.js para crear Worker desde Blob ───
+console.log('  → Convirtiendo Worker a Blob inline...');
+const workerBlobCode = `(function() {
+    var workerCode = ${JSON.stringify(workerSource)};
+    var blob = new Blob([workerCode], { type: 'application/javascript' });
+    return new Worker(URL.createObjectURL(blob));
+})()`;
+
+const appJsModified = appJs.replace(
+    /const createWorker = .*?; \/\/ DOCXLITE_WORKER/,
+    `const createWorker = () => ${workerBlobCode}; // DOCXLITE_WORKER`
+);
+
+// ─── Ensamblar HTML final ───
+console.log('  → Ensamblando HTML portable...');
+let output = html;
+
+// 1. Inline CSS dentro de los marcadores
+const styleBlock = '<style>\n' + css + '\n    </style>';
+output = replaceBlock(output, STYLE_START, STYLE_END, styleBlock);
+
+// 2. Inline scripts dentro de los marcadores
+const scriptBlock = '<script>\n' + appJsModified + '\n    </script>';
+output = replaceBlock(output, SCRIPTS_START, SCRIPTS_END, scriptBlock);
+
+// ─── Escribir archivo de salida ───
+fs.writeFileSync(OUT, output, 'utf-8');
+
+const sizeKB = (fs.statSync(OUT).size / 1024).toFixed(1);
+const sizeMB = (fs.statSync(OUT).size / (1024 * 1024)).toFixed(2);
+
+console.log(`\n  ✅ Build exitoso!`);
+console.log(`  📄 DocxLite.html (${sizeKB} KB / ${sizeMB} MB)`);
+console.log(`  📁 ${OUT}`);
+console.log(`\n  → Abrí DocxLite.html en cualquier navegador. No necesita servidor.\n`);
