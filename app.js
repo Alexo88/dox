@@ -10,12 +10,12 @@
    Refs DOM
    ───────────────────────────────────────── */
 const $ = (id) => document.getElementById(id);
-const toolbar = $('toolbar');
-const docTitle = $('doc-title');
+const customTitlebar = $('custom-titlebar');
+const tabsContainer = $('tabs-container');
 const btnOpen = $('btn-open');
-const btnSearch = $('btn-search');
 const btnTheme = $('btn-theme');
 const btnEdit = $( 'btn-edit' );
+const globalSearch = $('global-search');
 const fileInput = $('file-input');
 const dropzone = $('dropzone');
 const viewer = $('viewer');
@@ -23,6 +23,13 @@ const markdownEditor = $( 'markdown-editor' );
 const progress = $('progress');
 const progressBar = $('progress-bar');
 const progressText = $('progress-text');
+
+// Window controls
+const btnMinimize = $('btn-minimize');
+const btnMaximize = $('btn-maximize');
+const btnClose = $('btn-close');
+const iconMaximize = $('icon-maximize');
+const iconRestore = $('icon-restore');
 
 // Search
 const searchBar = $('search-bar');
@@ -452,23 +459,15 @@ const SearchEngine = {
     _debounceTimer: null,
 
     init() {
-        // Ctrl+F intercepta búsqueda nativa
+        // Ctrl+F and Escape handled by keyboard shortcuts handler
+        // Enter = next result, Shift+Enter = prev result (when search is open)
         document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-                e.preventDefault();
-                this.open();
-            }
-            if (e.key === 'Escape' && this.isOpen) {
-                this.close();
-            }
-            // Enter = siguiente, Shift+Enter = anterior
             if (e.key === 'Enter' && this.isOpen) {
                 e.preventDefault();
                 e.shiftKey ? this.prev() : this.next();
             }
         });
 
-        btnSearch.addEventListener('click', () => this.open());
         searchClose.addEventListener('click', () => this.close());
         searchPrev.addEventListener('click', () => this.prev());
         searchNext.addEventListener('click', () => this.next());
@@ -679,12 +678,317 @@ const SearchEngine = {
 
 
 /* ═══════════════════════════════════════════
-   6. FileHandler
+   6. TabManager
+   ═══════════════════════════════════════════ */
+const TabManager = {
+    tabs: new Map(),       // id → TabState
+    activeTabId: null,
+    nextId: 1,
+
+    init() {
+        // Nothing to init — tabs created on demand
+    },
+
+    /**
+     * Opens a document as a new tab.
+     * @param {string} name — display name (filename)
+     * @param {string} html — rendered HTML content
+     * @param {Array} sections — parsed sections from Sectionizer
+     * @param {object} extras — optional { scrollY, messages, markdown }
+     * @returns {number} tab id
+     */
+    openDocument(name, html, sections, extras = {}) {
+        const id = this.nextId++;
+
+        // Save current active tab state before switching
+        if (this.activeTabId !== null) {
+            this.saveActiveState();
+            this._destroyCurrentDOM();
+        }
+
+        const tab = {
+            id,
+            name,
+            html,
+            sections,
+            scrollY: extras.scrollY || 0,
+            messages: extras.messages || null,
+            markdown: extras.markdown || null
+        };
+
+        this.tabs.set(id, tab);
+        this.activeTabId = id;
+
+        this._renderTabBar();
+        this.restoreState(tab);
+
+        return id;
+    },
+
+    /**
+     * Switch to a different tab. Lazy DOM recreation.
+     */
+    switchTab(id) {
+        if (id === this.activeTabId) return;
+        const targetTab = this.tabs.get(id);
+        if (!targetTab) return;
+
+        // Save current state
+        this.saveActiveState();
+        this._destroyCurrentDOM();
+
+        // Activate target
+        this.activeTabId = id;
+        this._renderTabBar();
+        this.restoreState(targetTab);
+    },
+
+    /**
+     * Close a tab. Activates adjacent tab or shows empty state.
+     */
+    closeTab(id) {
+        if (!this.tabs.has(id)) return;
+
+        const wasActive = id === this.activeTabId;
+        this.tabs.delete(id);
+
+        if (this.tabs.size === 0) {
+            this.activeTabId = null;
+            this._renderTabBar();
+            this._showEmptyState();
+            return;
+        }
+
+        if (wasActive) {
+            // Activate adjacent tab (prefer next, fallback to prev)
+            const ids = Array.from(this.tabs.keys());
+            const closedIdx = ids.indexOf(id); // won't find it, but we want the nearest
+            // Find nearest tab
+            let nextActive = ids[ids.length - 1];
+            for (const tabId of ids) {
+                if (tabId > id) { nextActive = tabId; break; }
+            }
+
+            this._destroyCurrentDOM();
+            this.activeTabId = nextActive;
+            this._renderTabBar();
+            this.restoreState(this.tabs.get(nextActive));
+        } else {
+            this._renderTabBar();
+        }
+    },
+
+    /**
+     * Returns the current active tab state.
+     */
+    getActiveTab() {
+        return this.activeTabId !== null ? this.tabs.get(this.activeTabId) : null;
+    },
+
+    /**
+     * Save current viewer scroll position and search state to active tab.
+     */
+    saveActiveState() {
+        const tab = this.getActiveTab();
+        if (!tab) return;
+        tab.scrollY = window.scrollY || 0;
+    },
+
+    /**
+     * Recreate DOM from tab state.
+     */
+    restoreState(tab) {
+        // Show viewer, hide dropzone
+        dropzone.classList.add('hidden');
+        viewer.classList.remove('hidden');
+
+        // Update global search placeholder
+        globalSearch.placeholder = `Buscar en ${tab.name}...`;
+
+        // Re-initialize VirtualScroller with saved sections
+        VirtualScroller.init(tab.sections, {
+            onMeasured: () => {
+                Progress.hide();
+                // Restore scroll position
+                if (tab.scrollY) {
+                    window.scrollTo(0, tab.scrollY);
+                }
+            }
+        });
+
+        // Show edit button for markdown tabs
+        if (tab.markdown !== null && btnEdit) {
+            btnEdit.classList.remove('hidden');
+            btnEdit.innerHTML = '<span class="icon">📝</span> Editar';
+        } else if (btnEdit) {
+            btnEdit.classList.add('hidden');
+        }
+
+        // Update title
+        document.title = tab.name + ' — DocxLite';
+    },
+
+    /**
+     * Destroy current viewer DOM completely.
+     */
+    _destroyCurrentDOM() {
+        viewer.innerHTML = '';
+        SearchEngine.reset();
+    },
+
+    /**
+     * Show empty dropzone state (no tabs open).
+     */
+    _showEmptyState() {
+        viewer.innerHTML = '';
+        viewer.classList.add('hidden');
+        dropzone.classList.remove('hidden');
+        document.title = 'DocxLite';
+        globalSearch.placeholder = 'Buscar...';
+        if (btnEdit) btnEdit.classList.add('hidden');
+        markdownEditor.classList.add('hidden');
+    },
+
+    /**
+     * Render the tab bar HTML.
+     */
+    _renderTabBar() {
+        tabsContainer.innerHTML = '';
+        this.tabs.forEach((tab, id) => {
+            const el = document.createElement('div');
+            el.className = 'tab' + (id === this.activeTabId ? ' active' : '');
+            el.dataset.tabId = id;
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'tab-name';
+            nameSpan.textContent = tab.name;
+            nameSpan.title = tab.name;
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'tab-close';
+            closeBtn.textContent = '×';
+            closeBtn.title = 'Cerrar pestaña';
+            closeBtn.setAttribute('aria-label', 'Cerrar pestaña');
+
+            el.appendChild(nameSpan);
+            el.appendChild(closeBtn);
+
+            // Click on tab name → switch
+            nameSpan.addEventListener('click', () => this.switchTab(id));
+            // Click on close → close
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeTab(id);
+            });
+
+            tabsContainer.appendChild(el);
+        });
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   7. WindowControls
+   ═══════════════════════════════════════════ */
+const WindowControls = {
+    isMaximized: false,
+
+    init() {
+        if (typeof window.__TAURI__ === 'undefined') return;
+
+        btnMinimize.addEventListener('click', () => {
+            window.__TAURI__.invoke('minimize')
+                .catch(err => console.error('minimize error:', err));
+        });
+
+        btnMaximize.addEventListener('click', () => {
+            window.__TAURI__.invoke('toggle_maximize')
+                .then(() => {
+                    this.isMaximized = !this.isMaximized;
+                    this._updateMaximizeIcon();
+                })
+                .catch(err => console.error('toggle_maximize error:', err));
+        });
+
+        btnClose.addEventListener('click', () => {
+            window.__TAURI__.invoke('close_window')
+                .catch(err => console.error('close_window error:', err));
+        });
+    },
+
+    _updateMaximizeIcon() {
+        if (this.isMaximized) {
+            iconMaximize.style.display = 'none';
+            iconRestore.style.display = 'block';
+        } else {
+            iconMaximize.style.display = 'block';
+            iconRestore.style.display = 'none';
+        }
+    }
+};
+
+
+/* ═══════════════════════════════════════════
+   8. Keyboard Shortcuts
+   ═══════════════════════════════════════════ */
+function initKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+W — close active tab
+        if (e.ctrlKey && e.key.toLowerCase() === 'w') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (TabManager.activeTabId !== null) {
+                TabManager.closeTab(TabManager.activeTabId);
+            }
+        }
+
+        // Ctrl+F — focus titlebar search
+        if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            e.stopPropagation();
+            globalSearch.focus();
+            globalSearch.select();
+        }
+
+        // Esc — exit search mode
+        if (e.key === 'Escape') {
+            if (document.activeElement === globalSearch) {
+                globalSearch.value = '';
+                globalSearch.blur();
+                SearchEngine.close();
+            } else if (SearchEngine.isOpen) {
+                SearchEngine.close();
+            }
+        }
+    });
+
+    // Global search triggers detailed search overlay
+    globalSearch.addEventListener('input', () => {
+        const query = globalSearch.value;
+        if (query.length >= 2) {
+            if (!SearchEngine.isOpen) SearchEngine.open();
+            searchInput.value = query;
+            SearchEngine.search(query);
+        } else if (query.length === 0) {
+            SearchEngine.close();
+        }
+    });
+
+    globalSearch.addEventListener('focus', () => {
+        if (globalSearch.value.length >= 2) {
+            if (!SearchEngine.isOpen) SearchEngine.open();
+        }
+    });
+}
+
+/* ═══════════════════════════════════════════
+   9. FileHandler
    ═══════════════════════════════════════════ */
 const FileHandler = {
     worker: null,
     currentMarkdown: null,
     currentMarkdownName: null,
+    currentFileName: null,
     isEditing: false,
 
     init() {
@@ -764,8 +1068,8 @@ const FileHandler = {
         // Resetear busqueda para evitar resultados antiguos
         SearchEngine.reset();
 
-        // Mostrar nombre del archivo
-        docTitle.textContent = file.name;
+        // Guardar nombre del archivo
+        this.currentFileName = file.name;
         document.title = file.name + ' — DocxLite';
 
         if (isMarkdown) {
@@ -856,13 +1160,12 @@ const FileHandler = {
     _renderHtml(html, messages) {
         const sections = Sectionizer.parse(html);
 
-        // Mostrar el viewer, ocultar editor y dropzone
-        if (markdownEditor) markdownEditor.classList.add('hidden');
-        if (dropzone) dropzone.classList.add('hidden');
-        viewer.classList.remove('hidden');
-
-        // Iniciar renderizado virtual
-        VirtualScroller.init(sections, { onMeasured: () => Progress.hide() });
+        // Use TabManager to open as a tab
+        const name = this.currentFileName || this.currentMarkdownName || 'Documento';
+        TabManager.openDocument(name, html, sections, {
+            messages,
+            markdown: this.currentMarkdown
+        });
 
         // Log warnings de mammoth (si hay)
         if (messages && messages.length > 0) {
@@ -888,18 +1191,56 @@ const FileHandler = {
             data.html = null;
 
             this._renderHtml(html, data.messages);
+
+            // Expandir ventana para lectura (en Tauri)
+            // En Tauri v1, usamos __TAURI__ que se expone con withGlobalTauri: true
+            setTimeout(() => {
+                if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
+                    window.__TAURI__.invoke('expand_window_for_document')
+                        .then(() => console.log('Ventana expandida'))
+                        .catch(err => console.log('Error al expandir:', err));
+                }
+            }, 100);
         }
     }
 };
 
 
 /* ═══════════════════════════════════════════
-   7. Init
+   10. Init
    ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════
+   9. Titlebar Drag (Manual fallback for Tauri v1)
+   ═══════════════════════════════════════════ */
+function initTitlebarDrag() {
+    if (typeof window.__TAURI__ === 'undefined') return;
+    
+    const titlebar = document.getElementById('custom-titlebar');
+    if (!titlebar) return;
+    
+    // Listen for mousedown on titlebar
+    titlebar.addEventListener('mousedown', (e) => {
+        // If clicking on an interactive element, don't drag
+        const interactiveElements = ['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'A'];
+        if (interactiveElements.includes(e.target.tagName)) return;
+        if (e.target.closest('button') || e.target.closest('input')) return;
+        
+        // Start dragging via Tauri API
+        if (window.__TAURI__.window && window.__TAURI__.window.appWindow) {
+            window.__TAURI__.window.appWindow.startDragging();
+        }
+    });
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
     localStorage.setItem('docxlite-version', APP_VERSION);
     ThemeManager.init();
     SearchEngine.init();
+    TabManager.init();
+    WindowControls.init();
+    initKeyboardShortcuts();
+    initTitlebarDrag();
     FileHandler.init();
 });
 

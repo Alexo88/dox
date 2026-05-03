@@ -74,7 +74,22 @@ const scriptBlock = '<script>\n' + appJsModified + '\n    </script>';
 output = replaceBlock(output, SCRIPTS_START, SCRIPTS_END, scriptBlock);
 
 // ─── Escribir archivo de salida ───
+// 1. DocxLite.html (portable standalone)
 fs.writeFileSync(OUT, output, 'utf-8');
+
+// 2. public/index.html (para Tauri - mismo contenido embebido)
+const PUBLIC_DIR = path.join(ROOT, 'public');
+if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+const TAURI_OUT = path.join(PUBLIC_DIR, 'index.html');
+fs.writeFileSync(TAURI_OUT, output, 'utf-8');
+
+// Copiar favicon para Tauri
+const FAVICON_SRC = path.join(ROOT, 'src-tauri', 'icons', 'icon.ico');
+const FAVICON_DST = path.join(PUBLIC_DIR, 'favicon.ico');
+if (fs.existsSync(FAVICON_SRC) && !fs.existsSync(FAVICON_DST)) {
+    fs.copyFileSync(FAVICON_SRC, FAVICON_DST);
+    console.log('  → Copiado favicon.ico a public/');
+}
 
 const sizeKB = (fs.statSync(OUT).size / 1024).toFixed(1);
 const sizeMB = (fs.statSync(OUT).size / (1024 * 1024)).toFixed(2);
@@ -82,4 +97,6 @@ const sizeMB = (fs.statSync(OUT).size / (1024 * 1024)).toFixed(2);
 console.log(`\n  ✅ Build exitoso!`);
 console.log(`  📄 DocxLite.html (${sizeKB} KB / ${sizeMB} MB)`);
 console.log(`  📁 ${OUT}`);
-console.log(`\n  → Abrí DocxLite.html en cualquier navegador. No necesita servidor.\n`);
+console.log(`  📁 ${TAURI_OUT} (Tauri)`);
+console.log(`\n  → Abrí DocxLite.html en cualquier navegador. No necesita servidor.`);
+console.log(`  → O ejecutá "dx" para lanzar la versión nativa.\n`);

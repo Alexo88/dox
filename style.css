@@ -16,7 +16,10 @@
     --border: rgba(255, 255, 255, 0.06);
     --highlight: rgba(255, 230, 0, 0.3);
     --highlight-active: rgba(255, 230, 0, 0.6);
-    --toolbar-h: 48px;
+    --titlebar-h: 40px;
+    --tab-h: 32px;
+    --control-btn: 46px;
+    --control-icon-size: 16px;
     --reader-max-w: 780px;
     --transition: 0.2s ease;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -48,89 +51,287 @@ html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
     scroll-behavior: smooth;
+    background: var(--bg-primary);
+    min-height: 100vh;
 }
 
 body {
     font-family: var(--font-body);
-    background: var(--bg-primary);
+    background: transparent;
     color: var(--text-primary);
     line-height: 1.7;
     min-height: 100vh;
-    transition: background var(--transition), color var(--transition);
-    overflow-x: hidden;
+    max-height: 100vh;
+    overflow: hidden;
+    border-radius: 8px;
+    /* Importante: margin 0 para evitar espacios vacíos */
+    margin: 0;
+    padding: 0;
 }
 
 .hidden { display: none !important; }
 
-/* ─── Toolbar ─── */
-#toolbar {
-    position: sticky;
+/* ─── Custom Titlebar (frameless window) ─── */
+#custom-titlebar {
+    position: fixed; /* Changed from sticky - stay at top always */
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 100;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: var(--toolbar-h);
-    padding: 0 16px;
-    background: rgba(15, 15, 23, 0.85);
+    align-items: stretch; /* Changed to stretch - all children fill height */
+    height: var(--titlebar-h);
+    padding: 0;
+    background: rgba(15, 15, 23, 0.95);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border);
     transition: background var(--transition);
+    /* The entire titlebar is draggable, BUT interactive children override this */
+    -webkit-app-region: drag;
+    user-select: none;
 }
 
-[data-theme="light"] #toolbar {
-    background: rgba(245, 245, 248, 0.88);
+[data-theme="light"] #custom-titlebar {
+    background: rgba(245, 245, 248, 0.95);
 }
 
-#doc-title {
-    font-size: 0.85rem;
-    font-weight: 600;
+/* Interactive elements must NOT be draggable - apply to ALL interactive elements */
+#custom-titlebar button,
+#custom-titlebar input,
+#custom-titlebar select,
+#custom-titlebar textarea,
+[data-no-drag] {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+}
+
+/* But tabs container and open button inside tabs-zone ARE draggable */
+#tabs-zone {
+    -webkit-app-region: drag;
+}
+
+/* ── Tabs Zone ── */
+#tabs-zone {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex: 0 0 auto; /* Don't grow, don't shrink, use content width */
+    height: 100%;
+    padding: 0 4px;
+}
+
+#tabs-container {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    flex: 1;
+    min-width: 0;
+}
+
+#tabs-container::-webkit-scrollbar {
+    display: none;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--tab-h);
+    padding: 0 10px;
+    border-radius: 6px;
+    background: transparent;
     color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
     white-space: nowrap;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+    flex-shrink: 0;
+    max-width: 180px;
+}
+
+.tab:hover {
+    background: var(--accent-glow);
+    color: var(--text-primary);
+}
+
+.tab.active {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border);
+}
+
+.tab-name {
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 50vw;
-    letter-spacing: 0.02em;
+    max-width: 130px;
 }
 
-#toolbar-actions {
-    display: flex;
-    gap: 4px;
-}
-
-#toolbar-actions button {
+.tab-close {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 16px;
+    height: 16px;
     border: none;
-    border-radius: 8px;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--transition), background var(--transition);
+    flex-shrink: 0;
+}
+
+.tab:hover .tab-close,
+.tab.active .tab-close {
+    opacity: 1;
+}
+
+.tab-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+[data-theme="light"] .tab-close:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* ── Open button (tabs zone) ── */
+#btn-open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+#btn-open:hover {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* ── Search Zone ── */
+#search-zone {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1; /* Grow to fill available space */
+    min-width: 0;
+    height: 100%;
+    padding: 0 12px;
+    -webkit-app-region: no-drag;
+    justify-content: center;
+}
+
+#global-search {
+    width: 100%;
+    max-width: 400px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    font-size: 13px;
+    -webkit-app-region: no-drag;
+    outline: none;
+    transition: border-color var(--transition), background var(--transition);
+}
+
+#global-search:focus {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+}
+
+#global-search::placeholder {
+    color: var(--text-muted);
+}
+
+#search-zone button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
     transition: background var(--transition), color var(--transition);
 }
 
-#toolbar-actions button:hover {
+#search-zone button:hover {
     background: var(--accent-glow);
     color: var(--accent);
 }
 
-#btn-edit {
-    width: auto;
-    padding: 0 10px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+/* ── Window Controls ── */
+#window-controls {
+    display: flex;
+    align-items: stretch; /* Changed from flex-start to stretch - fill height */
+    margin-left: auto;
+    -webkit-app-region: no-drag;
+    height: 100%; /* Take full titlebar height */
+}
+
+#window-controls button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-btn);
+    height: 100%; /* Fill full titlebar height */
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+    border-radius: 0;
+    -webkit-app-region: no-drag;
+}
+
+#window-controls button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
+#btn-close:hover {
+    background: #e81123 !important;
+    color: #ffffff !important;
+}
+
+[data-theme="light"] #window-controls button:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] #btn-close:hover {
+    background: #e81123 !important;
+    color: #ffffff !important;
 }
 
 /* ─── Search bar ─── */
 #search-bar {
     position: fixed;
-    top: calc(var(--toolbar-h) + 8px);
-    right: 16px;
+    top: calc(var(--titlebar-h) + 8px);
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 200;
     display: flex;
     align-items: center;
@@ -226,7 +427,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: calc(100vh - var(--toolbar-h));
+    min-height: calc(100vh - var(--titlebar-h));
     padding: 32px;
     cursor: pointer;
 }
@@ -274,7 +475,7 @@ body {
     max-width: var(--reader-max-w);
     margin: 0 auto;
     padding: 24px;
-    min-height: calc(100vh - var(--toolbar-h));
+    min-height: calc(100vh - var(--titlebar-h));
     background: var(--bg-surface);
     color: var(--text-primary);
     border: 1px solid var(--border);
@@ -449,7 +650,7 @@ mark.search-highlight.active {
 
 /* ─── Print ─── */
 @media print {
-    #toolbar, #search-bar, #progress, #dropzone { display: none !important; }
+    #custom-titlebar, #search-bar, #progress, #dropzone { display: none !important; }
 
     body {
         background: white;
