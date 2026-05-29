@@ -1165,8 +1165,35 @@ const FileHandler = {
         this._renderHtml(markdownToHtml(sourceText));
     },
 
+    /**
+     * Sanitiza HTML contra XSS: filtra protocolos en href y elimina handlers inline.
+     * Sin DOMPurify (no está en el bundle) usa DOMParser nativo.
+     * Reemplazar cuerpo con DOMPurify cuando se agregue al bundle.
+     */
+    _sanitizeHtml(html) {
+        const SAFE_PROTOCOLS = ['http://', 'https://', 'mailto:', '#', '/'];
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+
+        // Filtrar href en links
+        doc.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href');
+            const hasSafeProtocol = SAFE_PROTOCOLS.some(p => href.toLowerCase().startsWith(p));
+            if (!hasSafeProtocol) a.setAttribute('href', '#');
+        });
+
+        // Eliminar event handlers inline (onclick, onerror, etc.)
+        doc.querySelectorAll('*').forEach(el => {
+            Array.from(el.attributes).forEach(attr => {
+                if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+            });
+        });
+
+        return doc.body.innerHTML;
+    },
+
     _renderHtml(html, messages) {
-        const sections = Sectionizer.parse(html);
+        const cleanHtml = this._sanitizeHtml(html);
+        const sections = Sectionizer.parse(cleanHtml);
 
         // Use TabManager to open as a tab
         const name = this.currentFileName || this.currentMarkdownName || 'Documento';
