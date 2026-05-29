@@ -61,8 +61,7 @@ body {
     color: var(--text-primary);
     line-height: 1.7;
     min-height: 100vh;
-    max-height: 100vh;
-    overflow: hidden;
+    overflow-y: auto;
     border-radius: 8px;
     /* Importante: margin 0 para evitar espacios vacíos */
     margin: 0;
@@ -116,7 +115,8 @@ body {
     display: flex;
     align-items: center;
     gap: 0;
-    flex: 0 0 auto; /* Don't grow, don't shrink, use content width */
+    flex: 0 1 auto;
+    max-width: 50%;
     height: 100%;
     padding: 0 4px;
 }
@@ -466,16 +466,17 @@ body {
 /* ─── Viewer ─── */
 #viewer {
     max-width: var(--reader-max-w);
-    margin: 0 auto;
+    margin: var(--titlebar-h) auto 0;
     padding: 40px 24px 80px;
 }
 
 #markdown-editor {
+    display: block;
     width: 100%;
     max-width: var(--reader-max-w);
-    margin: 0 auto;
+    margin: var(--titlebar-h) auto 0;
     padding: 24px;
-    min-height: calc(100vh - var(--titlebar-h));
+    min-height: calc(100vh - var(--titlebar-h) - 48px);
     background: var(--bg-surface);
     color: var(--text-primary);
     border: 1px solid var(--border);
