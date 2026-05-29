@@ -724,6 +724,22 @@ const TabManager = {
     },
 
     /**
+     * Actualiza la tab activa con nuevo contenido (sin crear tab duplicada).
+     */
+    updateActiveTab(html, sections, markdown) {
+        const tab = this.tabs.get(this.activeTabId);
+        if (!tab) return;
+
+        tab.html = html;
+        tab.sections = sections;
+        tab.markdown = markdown || null;
+        tab.scrollY = 0;
+
+        this._destroyCurrentDOM();
+        this.restoreState(tab);
+    },
+
+    /**
      * Switch to a different tab. Lazy DOM recreation.
      */
     switchTab(id) {
@@ -1136,6 +1152,8 @@ const FileHandler = {
             saveMarkdownVersion(this.currentMarkdownName, this.currentMarkdown);
             this.isEditing = false;
             btnEdit.innerHTML = '<span class="icon">📝</span> Editar';
+            markdownEditor.classList.add('hidden');
+            viewer.classList.remove('hidden');
             this._renderMarkdown(this.currentMarkdown);
             
             // Opcional: Ofrecer descarga automática o mediante botón
@@ -1144,6 +1162,12 @@ const FileHandler = {
             // Entrar en modo edición
             this.isEditing = true;
             btnEdit.innerHTML = '<span class="icon">👁️</span> Ver';
+            // Sincronizar currentMarkdown desde la tab activa
+            const activeTab = TabManager.getActiveTab();
+            if (activeTab) {
+                this.currentMarkdown = activeTab.markdown || this.currentMarkdown;
+                this.currentMarkdownName = activeTab.name;
+            }
             SearchEngine.reset();
             markdownEditor.value = this.currentMarkdown;
             markdownEditor.classList.remove('hidden');
@@ -1195,8 +1219,16 @@ const FileHandler = {
         const cleanHtml = this._sanitizeHtml(html);
         const sections = Sectionizer.parse(cleanHtml);
 
+        const name = this.currentMarkdownName || this.currentFileName || 'Documento';
+
+        // Si ya hay una tab activa con el mismo documento, actualizarla en vez de crear duplicado
+        const active = TabManager.getActiveTab();
+        if (active && active.name === name) {
+            TabManager.updateActiveTab(html, sections, this.currentMarkdown);
+            return;
+        }
+
         // Use TabManager to open as a tab
-        const name = this.currentFileName || this.currentMarkdownName || 'Documento';
         TabManager.openDocument(name, html, sections, {
             messages,
             markdown: this.currentMarkdown
@@ -1259,7 +1291,8 @@ function initTitlebarDrag() {
         const interactiveElements = ['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'A'];
         if (interactiveElements.includes(e.target.tagName)) return;
         if (e.target.closest('button') || e.target.closest('input')) return;
-        
+        if (e.target.closest('.tab')) return; // Evitar drag en pestañas
+
         // Start dragging via Tauri API
         if (window.__TAURI__.window && window.__TAURI__.window.appWindow) {
             window.__TAURI__.window.appWindow.startDragging();
