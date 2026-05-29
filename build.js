@@ -1,16 +1,16 @@
 /**
- * DocxLite — Build Script
+ * Khipu Codex — Build Script
  * Empaqueta todo en un unico archivo HTML portable.
  *
  * Uso: node build.js
- * Salida: DocxLite.html (todo incluido, 100% offline)
+ * Salida: KhipuCodex.html (todo incluido, 100% offline)
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const OUT = path.join(ROOT, 'DocxLite.html');
+const OUT = path.join(ROOT, 'KhipuCodex.html');
 
 const STYLE_START = '<!-- DOCXLITE:STYLE_START -->';
 const STYLE_END = '<!-- DOCXLITE:STYLE_END -->';
@@ -26,7 +26,7 @@ function replaceBlock(source, start, end, replacement) {
     return source.slice(0, startIdx + start.length) + '\n' + replacement + '\n' + source.slice(endIdx);
 }
 
-console.log('\n  🔨 DocxLite Builder\n');
+console.log('\n  🔨 Khipu Codex Builder\n');
 
 // ─── Leer archivos fuente ───
 console.log('  → Leyendo archivos fuente...');
@@ -74,7 +74,7 @@ const scriptBlock = '<script>\n' + appJsModified + '\n    </script>';
 output = replaceBlock(output, SCRIPTS_START, SCRIPTS_END, scriptBlock);
 
 // ─── Escribir archivo de salida ───
-// 1. DocxLite.html (portable standalone)
+// 1. KhipuCodex.html (portable standalone)
 fs.writeFileSync(OUT, output, 'utf-8');
 
 // 2. public/index.html (para Tauri - mismo contenido embebido)
@@ -95,8 +95,8 @@ const sizeKB = (fs.statSync(OUT).size / 1024).toFixed(1);
 const sizeMB = (fs.statSync(OUT).size / (1024 * 1024)).toFixed(2);
 
 console.log(`\n  ✅ Build exitoso!`);
-console.log(`  📄 DocxLite.html (${sizeKB} KB / ${sizeMB} MB)`);
+console.log(`  📄 KhipuCodex.html (${sizeKB} KB / ${sizeMB} MB)`);
 console.log(`  📁 ${OUT}`);
 console.log(`  📁 ${TAURI_OUT} (Tauri)`);
-console.log(`\n  → Abrí DocxLite.html en cualquier navegador. No necesita servidor.`);
+console.log(`\n  → Abrí KhipuCodex.html en cualquier navegador. No necesita servidor.`);
 console.log(`  → O ejecutá "dx" para lanzar la versión nativa.\n`);

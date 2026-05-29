@@ -8,7 +8,6 @@
   },
   "tauri": {
     "allowlist": {
-      "all": true,
       "fs": {
         "all": true,
         "readFile": true,
@@ -54,7 +53,7 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.maudev.docxlite",
+      "identifier": "com.maudev.khipucodex",
       "longDescription": "",
       "macOS": {
         "entitlements": null,
@@ -64,7 +63,7 @@
         "signingIdentity": null
       },
       "resources": [],
-      "shortDescription": "Visor ultraligero de documentos DOCX",
+      "shortDescription": "Visor ultraligero de documentos DOCX y Markdown",
       "targets": ["msi", "nsis"],
       "windows": {
         "certificateThumbprint": null,
@@ -83,7 +82,7 @@
         "fullscreen": false,
         "height": 700,
         "resizable": true,
-        "title": "DocxLite",
+        "title": "Khipu Codex",
         "width": 900,
         "center": true,
         "minWidth": 600,

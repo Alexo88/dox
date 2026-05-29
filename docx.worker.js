@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   DocxLite — Web Worker
+   Khipu Codex — Web Worker
    Convierte DOCX → HTML en hilo separado
    ═══════════════════════════════════════════ */
 

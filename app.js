@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   DocxLite — App principal
+   Khipu Codex — App principal
    Orquestador: FileHandler, Sectionizer,
    VirtualScroller, SearchEngine, ThemeManager
    ═══════════════════════════════════════════ */
@@ -75,7 +75,11 @@ function inlineMarkdown(text) {
     s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
     s = s.replace(/_([^_]+)_/g, '<em>$1</em>');
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, href) => {
-        const safeHref = href.replace(/"/g, '&quot;');
+        // Validar protocolos seguros (case-insensitive)
+        const SAFE_PROTOCOLS = ['http://', 'https://', 'mailto:', '#', '/'];
+        const hasSafeProtocol = SAFE_PROTOCOLS.some(p => href.toLowerCase().startsWith(p));
+        const validatedHref = hasSafeProtocol ? href : '#';
+        const safeHref = validatedHref.replace(/"/g, '&quot;');
         return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
     });
 
@@ -174,13 +178,21 @@ function markdownToHtml(markdown) {
 
 
 /* ═══════════════════════════════════════════
-/* ═══════════════════════════════════════════
    1. ThemeManager
    ═══════════════════════════════════════════ */
 const ThemeManager = {
     init() {
         // Respetar preferencia guardada, fallback a prefers-color-scheme
-        const saved = localStorage.getItem('docxlite-theme');
+        let saved = localStorage.getItem('khipu-theme');
+        // Migración desde clave anterior
+        if (!saved) {
+            const oldTheme = localStorage.getItem('docxlite-theme');
+            if (oldTheme) {
+                saved = oldTheme;
+                localStorage.setItem('khipu-theme', oldTheme);
+                localStorage.removeItem('docxlite-theme');
+            }
+        }
         if (saved) {
             document.documentElement.setAttribute('data-theme', saved);
         } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
@@ -195,7 +207,7 @@ const ThemeManager = {
         const current = document.documentElement.getAttribute('data-theme');
         const next = current === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('docxlite-theme', next);
+        localStorage.setItem('khipu-theme', next);
         this._updateIcon();
     },
 
@@ -298,9 +310,6 @@ const VirtualScroller = {
 
         // Render inicial: materializar todas para medir alturas
         this._measureAll();
-
-        // Configurar IntersectionObserver
-        this._setupObserver();
     },
 
     /**
@@ -430,6 +439,9 @@ const VirtualScroller = {
         if (!section.height) {
             section.height = el.offsetHeight;
         }
+
+        // Protección: si la altura aún no se midió, no desmaterializar
+        if (!section.height || section.height <= 0) return;
 
         el.innerHTML = '';
         el.classList.add('section--placeholder');
@@ -568,20 +580,6 @@ const SearchEngine = {
 
         // Marcar el resultado actual como activo
         const marks = el.querySelectorAll('mark.search-highlight');
-        let markIdx = 0;
-
-        // Contar cuántos resultados hay antes de esta sección
-        let countBefore = 0;
-        for (let i = 0; i < this.results.length; i++) {
-            if (this.results[i].sectionIdx === result.sectionIdx) {
-                if (i === this.currentIdx) {
-                    markIdx = this.currentIdx - countBefore;
-                    break;
-                }
-            } else if (this.results[i].sectionIdx < result.sectionIdx) {
-                countBefore++;
-            }
-        }
 
         // Encontrar el mark correcto dentro de la sección
         let inSectionIdx = 0;
@@ -750,30 +748,29 @@ const TabManager = {
         if (!this.tabs.has(id)) return;
 
         const wasActive = id === this.activeTabId;
-        this.tabs.delete(id);
-
-        if (this.tabs.size === 0) {
-            this.activeTabId = null;
-            this._renderTabBar();
-            this._showEmptyState();
-            return;
-        }
 
         if (wasActive) {
-            // Activate adjacent tab (prefer next, fallback to prev)
+            // Obtener IDs ANTES del delete para saber posición exacta
             const ids = Array.from(this.tabs.keys());
-            const closedIdx = ids.indexOf(id); // won't find it, but we want the nearest
-            // Find nearest tab
-            let nextActive = ids[ids.length - 1];
-            for (const tabId of ids) {
-                if (tabId > id) { nextActive = tabId; break; }
+            const closedIdx = ids.indexOf(id);
+            this.tabs.delete(id);
+
+            if (this.tabs.size === 0) {
+                this.activeTabId = null;
+                this._renderTabBar();
+                this._showEmptyState();
+                return;
             }
+
+            // Activar tab adyacente: preferir el que estaba después, fallback al anterior
+            let nextActive = ids[closedIdx + 1] ?? ids[closedIdx - 1];
 
             this._destroyCurrentDOM();
             this.activeTabId = nextActive;
             this._renderTabBar();
             this.restoreState(this.tabs.get(nextActive));
         } else {
+            this.tabs.delete(id);
             this._renderTabBar();
         }
     },
@@ -825,7 +822,7 @@ const TabManager = {
         }
 
         // Update title
-        document.title = tab.name + ' — DocxLite';
+        document.title = tab.name + ' — Khipu Codex';
     },
 
     /**
@@ -843,7 +840,7 @@ const TabManager = {
         viewer.innerHTML = '';
         viewer.classList.add('hidden');
         dropzone.classList.remove('hidden');
-        document.title = 'DocxLite';
+        document.title = 'Khipu Codex';
         globalSearch.placeholder = 'Buscar...';
         if (btnEdit) btnEdit.classList.add('hidden');
         markdownEditor.classList.add('hidden');
@@ -914,6 +911,18 @@ const WindowControls = {
             window.__TAURI__.invoke('close_window')
                 .catch(err => console.error('close_window error:', err));
         });
+
+        // Sincronizar isMaximized cuando la ventana cambia externamente (Win+↑, snap, etc.)
+        if (window.__TAURI__.event) {
+            window.__TAURI__.event.listen('tauri://resize', () => {
+                window.__TAURI__.window.appWindow.isMaximized()
+                    .then(maximized => {
+                        this.isMaximized = maximized;
+                        this._updateMaximizeIcon();
+                    })
+                    .catch(err => console.error('isMaximized error:', err));
+            });
+        }
     },
 
     _updateMaximizeIcon() {
@@ -993,7 +1002,6 @@ const FileHandler = {
 
     init() {
         // Crear Web Worker
-        // Crear Web Worker
         this.worker = createWorker();
         this.worker.onmessage = (e) => this._onWorkerMessage(e.data);
         this.worker.onerror = (e) => {
@@ -1070,7 +1078,7 @@ const FileHandler = {
 
         // Guardar nombre del archivo
         this.currentFileName = file.name;
-        document.title = file.name + ' — DocxLite';
+        document.title = file.name + ' — Khipu Codex';
 
         if (isMarkdown) {
             this.currentMarkdownName = file.name;
@@ -1234,7 +1242,7 @@ function initTitlebarDrag() {
 
 
 document.addEventListener('DOMContentLoaded', () => {
-    localStorage.setItem('docxlite-version', APP_VERSION);
+    localStorage.setItem('khipu-version', APP_VERSION);
     ThemeManager.init();
     SearchEngine.init();
     TabManager.init();
@@ -1254,7 +1262,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function saveMarkdownVersion(name, text) {
     if (!name) return;
-    const key = `docxlite-md-versions:${name}`;
+    const key = `khipu-md:${name}`;
     let versions = [];
     try {
         versions = JSON.parse(localStorage.getItem(key) || '[]');
@@ -1266,13 +1274,23 @@ function saveMarkdownVersion(name, text) {
     if (last && last.text === text) return;
 
     versions.push({ ts: Date.now(), text });
+
+    // Límite por cantidad
     if (versions.length > MARKDOWN_VERSION_LIMIT) {
         versions = versions.slice(-MARKDOWN_VERSION_LIMIT);
     }
 
+    // Límite por peso (~400KB máx)
+    const MAX_STORAGE_BYTES = 400 * 1024;
+    let serialized = JSON.stringify(versions);
+    while (serialized.length > MAX_STORAGE_BYTES && versions.length > 1) {
+        versions.shift();
+        serialized = JSON.stringify(versions);
+    }
+
     try {
-        localStorage.setItem(key, JSON.stringify(versions));
+        localStorage.setItem(key, serialized);
     } catch (err) {
-        // ignore storage errors
+        console.warn('[Khipu] localStorage lleno — versión no guardada para:', name);
     }
 }
