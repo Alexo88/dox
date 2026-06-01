@@ -631,6 +631,108 @@ mark.search-highlight.active {
     box-shadow: 0 0 0 2px var(--highlight-active);
 }
 
+/* ─── Annotation Layer ─── */
+#btn-annotate.active {
+    color: var(--accent);
+    background: var(--accent-glow);
+}
+
+#annotation-toolbar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.15s ease-out;
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.ann-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border-right: 1px solid var(--border);
+}
+
+.ann-toolbar-group:last-of-type {
+    border-right: none;
+}
+
+#annotation-toolbar button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background var(--transition), color var(--transition);
+}
+
+#annotation-toolbar button:hover {
+    background: var(--accent-glow);
+    color: var(--accent);
+}
+
+#annotation-toolbar button.active {
+    background: var(--accent-glow);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ann-color-btn {
+    width: 22px !important;
+    height: 22px !important;
+    border-radius: 50% !important;
+    border: 2px solid transparent !important;
+}
+
+.ann-color-btn.active {
+    border-color: var(--text-primary) !important;
+}
+
+.ann-eraser.active {
+    background: rgba(255, 100, 100, 0.15) !important;
+    color: #ff6b6b !important;
+}
+
+/* ─── Printing: hide annotations ─── */
+@media print {
+    #annotation-toolbar { display: none !important; }
+    .ann-canvas { display: none !important; }
+}
+
+/* ─── SVG Viewer ─── */
+.svg-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    min-height: 60vh;
+}
+
+.svg-container svg {
+    max-width: 100%;
+    height: auto;
+}
+
 /* ─── Responsive ─── */
 @media (max-width: 600px) {
     #viewer {

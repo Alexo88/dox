@@ -17,7 +17,8 @@
         "createDir": true,
         "removeDir": true,
         "removeFile": true,
-        "renameFile": true
+        "renameFile": true,
+        "scope": ["**"]
       },
       "dialog": {
         "all": true,

@@ -27,6 +27,8 @@
         <div id="search-zone" data-no-drag>
             <input type="text" id="global-search" placeholder="Buscar..." autocomplete="off">
             <button id="btn-edit" title="Editar markdown" aria-label="Editar markdown" class="hidden">Editar</button>
+            <button id="btn-save" title="Guardar (Ctrl+S)" aria-label="Guardar markdown" class="hidden">💾 Guardar</button>
+            <button id="btn-annotate" title="Anotaciones (dibujo)" aria-label="Activar anotaciones" class="hidden">✏️</button>
             <button id="btn-theme" title="Cambiar tema" aria-label="Cambiar tema" data-no-drag>
                 <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -69,7 +71,7 @@
                 </svg>
             </button>
         </div>
-        <input type="file" id="file-input" accept=".docx,.md,.markdown" hidden>
+        <input type="file" id="file-input" accept=".docx,.md,.markdown,.svg" hidden>
     </header>
 
     <!-- ═══ Search overlay (detailed controls) ═══ -->
@@ -107,9 +109,23 @@
 
     <textarea id="markdown-editor" class="hidden" spellcheck="false"></textarea>
 
+    <!-- ═══ Annotation toolbar ═══ -->
+    <div id="annotation-toolbar" class="hidden">
+        <div class="ann-toolbar-group">
+            <button class="ann-pen active" title="Lápiz" aria-label="Lápiz">✏️</button>
+            <button class="ann-eraser" title="Borrador" aria-label="Borrador">🧹</button>
+        </div>
+        <div class="ann-toolbar-group ann-colors"></div>
+        <div class="ann-toolbar-group ann-sizes"></div>
+        <button class="ann-clear" title="Borrar todo" aria-label="Borrar todas las anotaciones">🗑️</button>
+    </div>
+
     <!-- ═══ Scripts ═══ -->
     <!-- DOCXLITE:SCRIPTS_START -->
     <script src="lib/mammoth.browser.min.js"></script>
+    <!-- DOCXLITE:MARKED_START -->
+    <script src="lib/marked.min.js"></script>
+    <!-- DOCXLITE:MARKED_END -->
     <script src="app.js"></script>
     <!-- DOCXLITE:SCRIPTS_END -->
 </body>

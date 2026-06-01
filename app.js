@@ -15,6 +15,7 @@ const tabsContainer = $('tabs-container');
 const btnOpen = $('btn-open');
 const btnTheme = $('btn-theme');
 const btnEdit = $( 'btn-edit' );
+const btnSave = $('btn-save');
 const globalSearch = $('global-search');
 const fileInput = $('file-input');
 const dropzone = $('dropzone');
@@ -55,130 +56,44 @@ const MARKDOWN_VERSION_LIMIT = 10;
 // Worker factory (replaceable by build.js)
 const createWorker = () => new Worker('docx.worker.js'); // DOCXLITE_WORKER
 
-// Markdown helpers
-function escapeHtml(text) {
-    return text.replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-function inlineMarkdown(text) {
-    let s = escapeHtml(text);
-    const codeSpans = [];
-    s = s.replace(/`([^`]+)`/g, (m, p1) => {
-        codeSpans.push(p1);
-        return `@@CODE${codeSpans.length - 1}@@`;
-    });
-
-    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-    s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    s = s.replace(/_([^_]+)_/g, '<em>$1</em>');
-    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, href) => {
-        // Validar protocolos seguros (case-insensitive)
-        const SAFE_PROTOCOLS = ['http://', 'https://', 'mailto:', '#', '/'];
-        const hasSafeProtocol = SAFE_PROTOCOLS.some(p => href.toLowerCase().startsWith(p));
-        const validatedHref = hasSafeProtocol ? href : '#';
-        const safeHref = validatedHref.replace(/"/g, '&quot;');
-        return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-    });
-
-    s = s.replace(/@@CODE(\d+)@@/g, (m, idx) => {
-        const code = codeSpans[parseInt(idx, 10)] || '';
-        return `<code>${code}</code>`;
-    });
-
-    return s;
-}
-
-function markdownToHtml(markdown) {
-    const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const lines = normalized.split('\n');
-    const html = [];
-    let inCode = false;
-    let listType = null;
-
-    const closeList = () => {
-        if (listType) {
-            html.push(`</${listType}>`);
-            listType = null;
-        }
-    };
-
-    lines.forEach((line) => {
-        const trimmed = line.trim();
-
-        if (trimmed.startsWith('```')) {
-            if (!inCode) {
-                closeList();
-                inCode = true;
-                html.push('<pre><code>');
-            } else {
-                inCode = false;
-                html.push('</code></pre>');
-            }
-            return;
-        }
-
-        if (inCode) {
-            html.push(escapeHtml(line));
-            return;
-        }
-
-        if (trimmed === '') {
-            closeList();
-            return;
-        }
-
-        const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
-        if (headingMatch) {
-            closeList();
-            const level = headingMatch[1].length;
-            html.push(`<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`);
-            return;
-        }
-
-        if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
-            closeList();
-            html.push('<hr>');
-            return;
-        }
-
-        if (trimmed.startsWith('> ')) {
-            closeList();
-            html.push(`<blockquote>${inlineMarkdown(trimmed.slice(2))}</blockquote>`);
-            return;
-        }
-
-        const ulMatch = trimmed.match(/^[-*+]\s+(.*)$/);
-        const olMatch = trimmed.match(/^\d+\.\s+(.*)$/);
-        if (ulMatch || olMatch) {
-            const nextType = ulMatch ? 'ul' : 'ol';
-            if (listType !== nextType) {
-                closeList();
-                listType = nextType;
-                html.push(`<${listType}>`);
-            }
-            const itemText = ulMatch ? ulMatch[1] : olMatch[1];
-            html.push(`<li>${inlineMarkdown(itemText)}</li>`);
-            return;
-        }
-
-        closeList();
-        html.push(`<p>${inlineMarkdown(trimmed)}</p>`);
-    });
-
-    closeList();
-    if (inCode) {
-        html.push('</code></pre>');
+function saveMarkdownVersion(name, text) {
+    if (!name) return;
+    const key = `khipu-md:${name}`;
+    let versions = [];
+    try {
+        versions = JSON.parse(localStorage.getItem(key) || '[]');
+    } catch (err) {
+        versions = [];
     }
 
-    return html.join('\n');
+    const last = versions.length ? versions[versions.length - 1] : null;
+    if (last && last.text === text) return;
+
+    versions.push({ ts: Date.now(), text });
+
+    // Límite por cantidad
+    if (versions.length > MARKDOWN_VERSION_LIMIT) {
+        versions = versions.slice(-MARKDOWN_VERSION_LIMIT);
+    }
+
+    // Límite por peso (~400KB máx)
+    const MAX_STORAGE_BYTES = 400 * 1024;
+    let serialized = JSON.stringify(versions);
+    while (serialized.length > MAX_STORAGE_BYTES && versions.length > 1) {
+        versions.shift();
+        serialized = JSON.stringify(versions);
+    }
+
+    try {
+        localStorage.setItem(key, serialized);
+    } catch (err) {
+        console.warn('[Khipu] localStorage lleno — versión no guardada para:', name);
+    }
 }
 
 
 /* ═══════════════════════════════════════════
-   1. ThemeManager
+    1. ThemeManager
    ═══════════════════════════════════════════ */
 const ThemeManager = {
     init() {
@@ -958,6 +873,16 @@ const WindowControls = {
    ═══════════════════════════════════════════ */
 function initKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
+        // Ctrl+S — save current markdown
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (FileHandler.isEditing && FileHandler.currentMarkdown !== null) {
+                FileHandler.saveCurrentMarkdown();
+            }
+            return;
+        }
+
         // Ctrl+W — close active tab
         if (e.ctrlKey && e.key.toLowerCase() === 'w') {
             e.preventDefault();
@@ -1014,6 +939,7 @@ const FileHandler = {
     currentMarkdown: null,
     currentMarkdownName: null,
     currentFileName: null,
+    currentFilePath: null, // Ruta completa (solo en Tauri)
     isEditing: false,
 
     init() {
@@ -1056,6 +982,11 @@ const FileHandler = {
             btnEdit.addEventListener('click', () => this.toggleMarkdownEdit());
         }
 
+        // Botón guardar
+        if (btnSave) {
+            btnSave.addEventListener('click', () => this.saveCurrentMarkdown());
+        }
+
         // También soportar drop en toda la ventana cuando el viewer está activo
         document.addEventListener('dragover', (e) => e.preventDefault());
         document.addEventListener('drop', (e) => {
@@ -1072,6 +1003,143 @@ const FileHandler = {
                 fileInput.click();
             }
         });
+
+        // Leer argumento si se abrió con "Abrir con..." desde Explorer
+        this._handleOpenWithArgv();
+    },
+
+    /**
+     * Lee el path pasado como argumento al abrir la app con un archivo
+     * (Windows: "Abrir con...", doble click si es predeterminado)
+     */
+    async _handleOpenWithArgv() {
+        if (typeof window.__TAURI__ === 'undefined' ||
+            typeof window.__TAURI__.invoke === 'undefined') {
+            console.log('[Khipu] No Tauri — skip argv');
+            return;
+        }
+
+        try {
+            // Usamos invoke directo a nuestro comando Rust get_open_args
+            const args = await window.__TAURI__.invoke('get_open_args');
+            console.log('[Khipu] get_open_args:', args);
+
+            if (!args || args.length === 0) {
+                console.log('[Khipu] No file argument in argv');
+                return;
+            }
+
+            const filePath = args[0];
+            if (!filePath || typeof filePath !== 'string') {
+                console.warn('[Khipu] Invalid file path arg:', filePath);
+                return;
+            }
+
+            console.log('[Khipu] Opening file from argv:', filePath);
+
+            const lower = filePath.toLowerCase();
+            const isMarkdown = lower.endsWith('.md') || lower.endsWith('.markdown');
+            const isDocx = lower.endsWith('.docx');
+            if (!isMarkdown && !isDocx) return;
+
+            // Extraer nombre del archivo
+            const parts = filePath.replace(/\\/g, '/').split('/');
+            const fileName = parts.pop();
+
+            this.currentFileName = fileName;
+            this.currentFilePath = filePath; // Guardar para poder sobreescribir
+            document.title = fileName + ' — Khipu Codex';
+            SearchEngine.reset();
+            dropzone.classList.add('hidden');
+            viewer.classList.remove('hidden');
+
+            if (isMarkdown) {
+                this.currentMarkdownName = fileName;
+                Progress.show('Leyendo markdown...', 30);
+                const text = await window.__TAURI__.fs.readTextFile(filePath);
+                Progress.show('Renderizando markdown...', 70);
+                this._renderMarkdown(String(text));
+            } else {
+                // .docx
+                this.currentMarkdown = null;
+                this.currentMarkdownName = null;
+                this.isEditing = false;
+                if (btnEdit) btnEdit.classList.add('hidden');
+                if (markdownEditor) markdownEditor.classList.add('hidden');
+
+                Progress.show('Leyendo archivo...', 20);
+                const raw = await window.__TAURI__.fs.readBinaryFile(filePath);
+                // readBinaryFile devuelve number[] o Uint8Array según versión
+                const uint8 = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+                const arrayBuffer = uint8.buffer.slice(0);
+                Progress.show('Procesando documento...', 50);
+                this.worker.postMessage(arrayBuffer, [arrayBuffer]);
+            }
+        } catch (err) {
+            console.warn('[Khipu] Error al abrir archivo desde argumentos:', err);
+        }
+    },
+
+    /**
+     * Guarda el markdown actual a disco (Tauri) o descarga (browser).
+     */
+    async saveCurrentMarkdown() {
+        if (!this.currentMarkdown) return;
+
+        // Sincronizar último valor desde el editor si está abierto
+        if (this.isEditing && markdownEditor && !markdownEditor.classList.contains('hidden')) {
+            this.currentMarkdown = markdownEditor.value;
+        }
+
+        const content = this.currentMarkdown;
+        const name = this.currentMarkdownName || this.currentFileName || 'documento.md';
+
+        // Backup automático antes de guardar
+        saveMarkdownVersion(name, content);
+
+        if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.fs) {
+            try {
+                // Tauri: escribir al archivo original o pedir destino
+                let targetPath = this.currentFilePath;
+
+                if (!targetPath) {
+                    // No hay path (archivo abierto por file picker) → save dialog
+                    const selected = await window.__TAURI__.dialog.save({
+                        defaultPath: name,
+                        filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }]
+                    });
+                    if (!selected) return;
+                    targetPath = selected;
+                }
+
+                await window.__TAURI__.fs.writeTextFile(targetPath, content);
+                this.currentFilePath = targetPath;
+                this.currentFileName = targetPath.replace(/\\/g, '/').split('/').pop();
+                document.title = this.currentFileName + ' — Khipu Codex';
+                saveMarkdownVersion(name, content); // backup post-save
+                Progress.show('✅ Guardado', 100);
+                setTimeout(Progress.hide, 1200);
+                console.log('[Khipu] Markdown guardado en:', targetPath);
+            } catch (err) {
+                console.error('[Khipu] Error al guardar:', err);
+                Progress.show('❌ Error al guardar', 0);
+                setTimeout(Progress.hide, 2000);
+            }
+        } else {
+            // Browser: descarga via Blob
+            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            Progress.show('✅ Descargado', 100);
+            setTimeout(Progress.hide, 1200);
+        }
     },
 
     /**
@@ -1152,16 +1220,15 @@ const FileHandler = {
             saveMarkdownVersion(this.currentMarkdownName, this.currentMarkdown);
             this.isEditing = false;
             btnEdit.innerHTML = '<span class="icon">📝</span> Editar';
+            if (btnSave) btnSave.classList.add('hidden');
             markdownEditor.classList.add('hidden');
             viewer.classList.remove('hidden');
             this._renderMarkdown(this.currentMarkdown);
-            
-            // Opcional: Ofrecer descarga automática o mediante botón
-            console.log('Cambios guardados en memoria/localStorage');
         } else {
             // Entrar en modo edición
             this.isEditing = true;
             btnEdit.innerHTML = '<span class="icon">👁️</span> Ver';
+            if (btnSave) btnSave.classList.remove('hidden');
             // Sincronizar currentMarkdown desde la tab activa
             const activeTab = TabManager.getActiveTab();
             if (activeTab) {
@@ -1186,7 +1253,7 @@ const FileHandler = {
             btnEdit.classList.remove('hidden');
             btnEdit.innerHTML = '<span class="icon">📝</span> Editar';
         }
-        this._renderHtml(markdownToHtml(sourceText));
+        this._renderHtml(marked.parse(sourceText));
     },
 
     /**
@@ -1311,46 +1378,3 @@ document.addEventListener('DOMContentLoaded', () => {
     initTitlebarDrag();
     FileHandler.init();
 });
-
-
-
-
-
-
-
-
-
-function saveMarkdownVersion(name, text) {
-    if (!name) return;
-    const key = `khipu-md:${name}`;
-    let versions = [];
-    try {
-        versions = JSON.parse(localStorage.getItem(key) || '[]');
-    } catch (err) {
-        versions = [];
-    }
-
-    const last = versions.length ? versions[versions.length - 1] : null;
-    if (last && last.text === text) return;
-
-    versions.push({ ts: Date.now(), text });
-
-    // Límite por cantidad
-    if (versions.length > MARKDOWN_VERSION_LIMIT) {
-        versions = versions.slice(-MARKDOWN_VERSION_LIMIT);
-    }
-
-    // Límite por peso (~400KB máx)
-    const MAX_STORAGE_BYTES = 400 * 1024;
-    let serialized = JSON.stringify(versions);
-    while (serialized.length > MAX_STORAGE_BYTES && versions.length > 1) {
-        versions.shift();
-        serialized = JSON.stringify(versions);
-    }
-
-    try {
-        localStorage.setItem(key, serialized);
-    } catch (err) {
-        console.warn('[Khipu] localStorage lleno — versión no guardada para:', name);
-    }
-}

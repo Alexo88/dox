@@ -1,60 +1,85 @@
-# 🚀 DocxLite
+# Khipu Codex
 
-**El visor de documentos DOCX definitivo: Ultra-ligero, Multi-pestaña y 100% Offline.**
+**Visor ultraligero de documentos DOCX, Markdown y SVG — Multi-pestaña, 100% Offline.**
 
-DocxLite es una herramienta minimalista diseñada para reemplazar suites pesadas (como Microsoft Office) cuando solo necesitás **leer**, **revisar** o **comparar** documentos rápidamente. Basado en una arquitectura de alto rendimiento, DocxLite maneja múltiples archivos de cientos de páginas con fluidez total y consumo mínimo de recursos.
-
----
-
-## ✨ Características Principales
-
-*   **🗂️ Sistema de Pestañas:** Abrí múltiples documentos en una sola ventana. Navegación fluida y eficiente.
-*   **🎨 Interfaz Moderna:** Ventana *frameless* con diseño estilo macOS/VS Code para máxima área de lectura.
-*   **⚡️ Carga Instantánea:** Olvidate de esperar a que Word cargue. DocxLite abre archivos `.docx` y `.md` en milisegundos.
-*   **🏎️ Virtual Scrolling:** Renderizado inteligente que solo dibuja lo que ves en pantalla. Leé documentos de 500 páginas sin que el navegador se cuelgue.
-*   **🔒 100% Privacidad & Offline:** Tus documentos nunca salen de tu computadora. No requiere internet ni servidores externos.
-*   **📝 Editor de Markdown:** Editá y previsualizá archivos `.md` directamente con un flujo de trabajo ágil.
-*   **🔍 Búsqueda Inteligente (Ctrl+F):** Buscá texto en segundos, con resaltado en tiempo real.
-*   **🌙 Modo Oscuro/Claro:** Interfaz elegante que se adapta a tu preferencia visual.
+Khipu Codex es una herramienta minimalista para leer, revisar y anotar documentos sin suites pesadas. Basado en Tauri v1 + Rust, maneja múltiples archivos de cientos de páginas con fluidez total y consumo mínimo de recursos.
 
 ---
 
-## 🛠️ Cómo Usarlo (Atajos Rápidos)
+## Características
 
-DocxLite está diseñado para la terminal y el uso fluido con teclado:
-
-*   **Comando `dx`:** Escribí `dx` en tu terminal y la aplicación se abrirá al instante (desde cualquier carpeta).
-*   **`Ctrl + O`**: Abrir un nuevo archivo en una pestaña nueva.
-*   **`Ctrl + F`**: Foco en la barra de búsqueda superior.
-*   **`Ctrl + W`**: Cerrar la pestaña actual.
-*   **`Esc`**: Salir de la búsqueda o limpiar el filtro.
-*   **`Drag & Drop`**: Arrastrá archivos directamente a la ventana para abrirlos.
-
----
-
-## 🏗️ Arquitectura Técnica
-
-DocxLite es un híbrido nativo optimizado:
-
-1.  **Núcleo Rust (Tauri v1):** Empaquetado como una aplicación Windows nativa de ~5MB.
-2.  **Web Worker & Mammoth.js:** El procesamiento de los documentos Word ocurre en un hilo separado para no congelar la interfaz.
-3.  **Lazy DOM Management:** Las pestañas inactivas no consumen memoria DOM; se recrean instantáneamente al activarlas.
-4.  **Zero-Dependencies (Runtime):** Todo el código está inyectado para máxima portabilidad.
+- **Sistema de Pestañas:** Abrí múltiples documentos en una sola ventana. Navegación fluida y eficiente.
+- **Interfaz Moderna:** Ventana *frameless* con título personalizado, estilo macOS/VS Code.
+- **Formatos:** `.docx`, `.md`, `.markdown`, `.svg` — todos nativos, sin plugins.
+- **Virtual Scrolling:** Renderizado inteligente que solo dibuja lo que ves en pantalla. Documentos de 500+ páginas sin que el navegador se cuelgue.
+- **Anotaciones en Canvas:** Dibujá a mano alzada sobre las secciones del documento. Toolbar flotante con colores, grosores y borrador. Persistencia por documento en localStorage.
+- **Editor de Markdown:** Editá y previsualizá archivos `.md`. Guardado a disco (Tauri `writeTextFile`) o descarga (Blob). Backup automático de versiones.
+- **Búsqueda Inteligente (Ctrl+F):** Buscá texto en todas las secciones, con resaltado en tiempo real y navegación entre resultados.
+- **Modo Oscuro/Claro:** Interfaz que se adapta a tu preferencia visual y se persiste entre sesiones.
+- **100% Privacidad & Offline:** Tus documentos nunca salen de tu computadora. No requiere internet ni servidores externos.
+- **Open-with:** Soporte para "Abrir con..." desde el explorador de Windows (Tauri).
 
 ---
 
-## 🚀 Instalación para Desarrolladores
+## Stack
 
-Si querés modificar DocxLite, necesitás **Rust** (Cargo) y **Node.js**:
-
-1.  **Clonar el repo:** `git clone https://github.com/Alexo88/dox.git`
-2.  **Instalar Tauri CLI:** `cargo install tauri-cli --version "^1"` (si no lo tenés).
-3.  **Lanzar en modo dev:** `cargo tauri dev` (dentro de `src-tauri`).
-4.  **Generar versión final:** `cargo tauri build`.
-5.  **Build del HTML portable:** `node build.js`.
+| Capa | Tecnología |
+|------|-----------|
+| Frontend | HTML + CSS + JavaScript vanilla (15 módulos ES) |
+| Backend nativo | Rust (Tauri v1) — 6 comandos |
+| Procesamiento DOCX | Mammoth.js en Web Worker |
+| Parser Markdown | marked.js v15.0.12 (GFM) |
+| Anotaciones | Canvas API nativa + localStorage |
+| Empaquetado | Tauri CLI + build.js (781 KB output) |
 
 ---
 
-## ⚖️ Licencia
+## Arquitectura
 
-Hecho por **Maudev** — Pensado para la velocidad. 🏎️💨
+```
+src/
+├── constants.js      — Constantes globales
+├── dom-refs.js       — Refs DOM
+├── theme.js          — Modo oscuro/claro
+├── progress.js       — Barra de progreso
+├── markdown.js       — Backup de versiones MD
+├── sectionizer.js    — Parseo HTML a secciones
+├── scroller.js       — VirtualScroller
+├── search.js         — Búsqueda (Ctrl+F)
+├── tabs.js           — Gestión de pestañas
+├── annotation.js     — Canvas overlay + dibujo
+├── svg-viewer.js     — Sanitizador SVG custom
+├── window.js         — Controles de ventana
+├── keyboard.js       — Atajos de teclado
+├── file-handler.js   — Orquestador DOCX/MD/SVG
+└── main.js           — Init + titlebar drag
+```
+
+---
+
+## Cómo Usarlo
+
+### Modo portable (HTML)
+Abrí `index.html` en cualquier navegador moderno. Sin instalación. Función completa excepto open-with y guardado a disco nativo.
+
+### Modo nativo (EXE)
+Ejecutá `dx.bat` o el binario compilado en `src-tauri/target/release/app.exe` para ventana nativa con arrastrar archivos, guardado a disco y open-with.
+
+---
+
+## Build
+
+```bash
+# HTML portable
+node build.js
+
+# Nativo Windows (dentro de src-tauri)
+cd src-tauri
+cargo tauri build
+```
+
+Requiere: Rust (Cargo), Node.js, Tauri CLI (`cargo install tauri-cli --version "^1"`).
+
+---
+
+**v0.3.0** — Hecho por **Maudev** — Pensado para la velocidad.

@@ -1,5 +1,5 @@
 @echo off
-:: DocxLite Launcher
+:: Khipu Codex Launcher
 :: Ejecuta el EXE portable nativo de Windows
 
 SETLOCAL EnableDelayedExpansion
@@ -20,7 +20,7 @@ IF EXIST "%EXE_DEBUG%" (
     exit /b 0
 )
 
-echo [ERROR] No se encontro DocxLite.exe
+echo [ERROR] No se encontro Khipu Codex.exe
 echo.
 echo Para compilar la version nativa:
 echo   cd src-tauri ^&^& cargo tauri build

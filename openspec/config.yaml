@@ -1,0 +1,83 @@
+schema: spec-driven
+
+context: |
+  Tech stack:
+    - Vanilla JavaScript (ES2020+, strict mode, no bundler, no transpiler)
+    - Tauri v1.6 (Rust backend, withGlobalTauri: true)
+    - mammoth.js 1.x (DOCX → HTML conversion in Web Worker)
+    - Node.js (build.js only — inlines CSS/JS/Worker into single portable HTML)
+    - CSS custom properties (dark/light theming, no preprocessor)
+
+  Architecture:
+    - Single-page app: index.html + app.js + style.css + docx.worker.js
+    - Monolithic app.js (~1430 lines) with object-literal modules:
+      ThemeManager, Progress, Sectionizer, VirtualScroller, SearchEngine,
+      TabManager, WindowControls, FileHandler, KeyboardShortcuts
+    - Web Worker (docx.worker.js) runs mammoth.js off-main-thread
+    - VirtualScroller: IntersectionObserver-based lazy DOM with section chunking (20 nodes/section)
+    - TabManager: lazy DOM save/restore per tab (no active DOM for inactive tabs)
+    - Build: node build.js → KhipuCodex.html (portable) + public/index.html (Tauri)
+    - Rust backend: 6 tauri::commands (get_open_args, expand_window_for_document,
+      reset_window_size, minimize, toggle_maximize, close_window)
+
+  Testing:
+    - No test runner, no test framework, no test files found
+    - No package.json, no CI/CD pipeline
+    - Manual testing only (visual inspection in browser + Tauri dev)
+
+  Style:
+    - Spanish comments and UI strings (user-facing language is Spanish)
+    - Object-literal module pattern (no classes, no ES modules in production)
+    - CSS custom properties for theming
+    - Inline SVG icons (no icon library)
+    - Zero runtime dependencies (mammoth.js is the only vendor lib)
+
+  Known debt (from khipu-codex-plan.md):
+    - app.js monolítico (1390+ lines)
+    - Custom MD parser fragile (no tables, nested lists, images in MD)
+    - saveMarkdownVersion() orphaned outside any module
+    - README.md says "DocxLite" (outdated rename)
+    - dx.bat error message says "DocxLite"
+    - CHANGELOG.md stuck at v0.2.0
+    - tauri.conf.json has unnecessary process: { all: true }
+    - No save-to-disk for MD editor (localStorage only)
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Reference specific line ranges in app.js when proposing modifications
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Document architecture decisions with rationale
+    - For app.js refactors, show before/after module structure
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Never touch more than 3 files per task without splitting
+  apply:
+    - Follow existing code patterns (object-literal modules, Spanish comments)
+    - Preserve build marker comments (DOCXLITE:STYLE_START, DOCXLITE:SCRIPTS_START, etc.)
+    - Do NOT rename "DocxLite" references unless the task explicitly requires it
+  tdd: false
+  test_command: ""
+  verify:
+    test_command: ""
+    build_command: "node build.js"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+
+testing:
+  runner: none
+  framework: none
+  command: ""
+  coverage_tool: none
+  coverage_command: ""
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  strict_tdd: false
+  reason: "No test runner, framework, or test files exist in the project. Manual testing only."

@@ -1,4 +1,10 @@
-use tauri::{Manager, Window};
+use tauri::Window;
+
+/// Devuelve los argumentos de línea de comandos (sin el path del EXE)
+#[tauri::command]
+fn get_open_args() -> Vec<String> {
+    std::env::args().skip(1).collect()
+}
 
 #[tauri::command]
 async fn expand_window_for_document(window: Window) -> Result<(), String> {
@@ -92,6 +98,7 @@ async fn close_window(window: Window) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            get_open_args,
             expand_window_for_document,
             reset_window_size,
             minimize,
@@ -101,6 +108,7 @@ pub fn run() {
         .setup(|_app| {
             #[cfg(debug_assertions)]
             {
+                use tauri::Manager;
                 let window = _app.get_window("main").unwrap();
                 window.open_devtools();
             }
