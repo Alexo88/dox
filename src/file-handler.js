@@ -13,7 +13,7 @@ const FileHandler = {
     currentMarkdown: null,
     currentMarkdownName: null,
     currentFileName: null,
-    currentFilePath: null, // Ruta completa (solo en Tauri)
+    currentDocumentToken: null, // Token del documento actual (Rust side)
     isEditing: false,
 
     init() {
@@ -85,6 +85,7 @@ const FileHandler = {
     /**
      * Lee el path pasado como argumento al abrir la app con un archivo
      * (Windows: "Abrir con...", doble click si es predeterminado)
+     * Ahora usa open_document_from_argv que lee argv internamente y devuelve DocumentInfo
      */
     async _handleOpenWithArgv() {
         if (typeof window.__TAURI__ === 'undefined' ||
@@ -94,75 +95,53 @@ const FileHandler = {
         }
 
         try {
-            // Usamos invoke directo a nuestro comando Rust get_open_args
-            const args = await window.__TAURI__.invoke('get_open_args');
-            console.log('[Khipu] get_open_args:', args);
+            // open_document_from_argv lee argv internamente y abre el primer archivo
+            const result = await window.__TAURI__.invoke('open_document_from_argv');
+            console.log('[Khipu] open_document_from_argv result:', result);
 
-            if (!args || args.length === 0) {
+            if (!result) {
                 console.log('[Khipu] No file argument in argv');
                 return;
             }
 
-            const filePath = args[0];
-            if (!filePath || typeof filePath !== 'string') {
-                console.warn('[Khipu] Invalid file path arg:', filePath);
-                return;
-            }
-
-            console.log('[Khipu] Opening file from argv:', filePath);
-
-            const lower = filePath.toLowerCase();
-            const isMarkdown = lower.endsWith('.md') || lower.endsWith('.markdown');
-            const isDocx = lower.endsWith('.docx');
-            const isSvg = lower.endsWith('.svg');
-            if (!isMarkdown && !isDocx && !isSvg) return;
-
-            // Extraer nombre del archivo
-            const parts = filePath.replace(/\\/g, '/').split('/');
-            const fileName = parts.pop();
-
-            this.currentFileName = fileName;
-            this.currentFilePath = filePath; // Guardar para poder sobreescribir
-            document.title = fileName + ' — Khipu Codex';
+            // Guardar token y nombre
+            this.currentDocumentToken = result.token;
+            this.currentFileName = result.file_name;
+            document.title = result.file_name + ' — Khipu Codex';
             SearchEngine.reset();
             dropzone.classList.add('hidden');
             viewer.classList.remove('hidden');
 
-            if (isMarkdown) {
-                this.currentMarkdownName = fileName;
-                Progress.show('Leyendo markdown...', 30);
-                const text = await window.__TAURI__.fs.readTextFile(filePath);
-                Progress.show('Renderizando markdown...', 70);
-                this._renderMarkdown(String(text));
+            if (result.is_text) {
+                const text = new TextDecoder('utf-8').decode(new Uint8Array(result.content));
+                const lowerName = result.file_name.toLowerCase();
+                if (lowerName.endsWith('.svg')) {
+                    // SVG — ruta independiente
+                    this.currentMarkdown = null;
+                    this.currentMarkdownName = null;
+                    this.isEditing = false;
+                    if (btnEdit) btnEdit.classList.add('hidden');
+                    if (markdownEditor) markdownEditor.classList.add('hidden');
+                    Progress.show('Renderizando SVG...', 100);
+                    this._openSvg(text, result.file_name);
+                } else {
+                    // Markdown
+                    this.currentMarkdownName = result.file_name;
+                    Progress.show('Renderizando...', 70);
+                    this._renderMarkdown(text);
+                }
             } else {
-                // .docx
+                // DOCX binario
                 this.currentMarkdown = null;
                 this.currentMarkdownName = null;
                 this.isEditing = false;
                 if (btnEdit) btnEdit.classList.add('hidden');
                 if (markdownEditor) markdownEditor.classList.add('hidden');
 
-                Progress.show('Leyendo archivo...', 20);
-                const raw = await window.__TAURI__.fs.readBinaryFile(filePath);
-                // readBinaryFile devuelve number[] o Uint8Array según versión
-                const uint8 = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-                const arrayBuffer = uint8.buffer.slice(0);
                 Progress.show('Procesando documento...', 50);
+                const uint8 = new Uint8Array(result.content);
+                const arrayBuffer = uint8.buffer.slice(0);
                 this.worker.postMessage(arrayBuffer, [arrayBuffer]);
-            }
-
-            if (isSvg) {
-                this.currentMarkdown = null;
-                this.currentMarkdownName = null;
-                this.isEditing = false;
-                if (btnEdit) btnEdit.classList.add('hidden');
-                if (markdownEditor) markdownEditor.classList.add('hidden');
-
-                Progress.show('Leyendo SVG...', 30);
-                const text = await window.__TAURI__.fs.readTextFile(filePath);
-                Progress.show('Renderizando SVG...', 100);
-                this._openSvg(String(text), fileName);
-                return;
             }
         } catch (err) {
             console.warn('[Khipu] Error al abrir archivo desde argumentos:', err);
@@ -186,29 +165,28 @@ const FileHandler = {
         // Backup automático antes de guardar
         saveMarkdownVersion(name, content);
 
-        if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.fs) {
+        if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
             try {
-                // Tauri: escribir al archivo original o pedir destino
-                let targetPath = this.currentFilePath;
-
-                if (!targetPath) {
-                    // No hay path (archivo abierto por file picker) → save dialog
-                    const selected = await window.__TAURI__.dialog.save({
-                        defaultPath: name,
-                        filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }]
+                // Tauri: guardar con token existente o pedir destino
+                if (this.currentDocumentToken) {
+                    // Ya tenemos token — sobrescribir el mismo archivo
+                    const result = await window.__TAURI__.invoke('save_markdown', {
+                        token: this.currentDocumentToken,
+                        existing_token: this.currentDocumentToken,
+                        content: content
                     });
-                    if (!selected) return;
-                    targetPath = selected;
-                }
 
-                await window.__TAURI__.fs.writeTextFile(targetPath, content);
-                this.currentFilePath = targetPath;
-                this.currentFileName = targetPath.replace(/\\/g, '/').split('/').pop();
-                document.title = this.currentFileName + ' — Khipu Codex';
+                    this.currentFileName = result.replace(/\\/g, '/').split('/').pop();
+                    document.title = this.currentFileName + ' — Khipu Codex';
+                } else {
+                    // No hay token (archivo abierto por file picker) — Save As dialog
+                    await this._saveMarkdownAs(content, name);
+                    return;
+                }
                 saveMarkdownVersion(name, content); // backup post-save
                 Progress.show('✅ Guardado', 100);
                 setTimeout(Progress.hide, 1200);
-                console.log('[Khipu] Markdown guardado en:', targetPath);
+                console.log('[Khipu] Markdown guardado en:', result);
             } catch (err) {
                 console.error('[Khipu] Error al guardar:', err);
                 Progress.show('❌ Error al guardar', 0);
@@ -232,6 +210,57 @@ const FileHandler = {
     },
 
     /**
+     * Guarda como nuevo archivo (Save As) — usa comando Rust save_markdown_as.
+     * Funciona sin token inicial (archivos abiertos por file picker).
+     * Actualiza currentDocumentToken y currentFileName con el resultado.
+     * @param {string} content — Contenido markdown a guardar
+     * @param {string} suggestedName — Nombre sugerido para el diálogo
+     */
+    async _saveMarkdownAs(content, suggestedName) {
+        if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
+            try {
+                // save_markdown_as devuelve { path, new_token } o error si cancela
+                const result = await window.__TAURI__.invoke('save_markdown_as', {
+                    token: this.currentDocumentToken || '',
+                    content: content,
+                    suggested_name: suggestedName
+                });
+
+                if (!result || !result.path) {
+                    saveMarkdownVersion(suggestedName, content);
+                    return; // Usuario canceló el diálogo
+                }
+
+                this.currentDocumentToken = result.new_token;
+                this.currentFileName = result.path.replace(/\\/g, '/').split('/').pop();
+                document.title = this.currentFileName + ' — Khipu Codex';
+                saveMarkdownVersion(suggestedName, content);
+                Progress.show('✅ Guardado como', 100);
+                setTimeout(Progress.hide, 1200);
+                console.log('[Khipu] Markdown guardado como:', result.path);
+            } catch (err) {
+                console.error('[Khipu] Error al guardar como:', err);
+                Progress.show('❌ Error al guardar', 0);
+                setTimeout(Progress.hide, 2000);
+            }
+        } else {
+            // Browser: descarga via Blob
+            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = suggestedName;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            Progress.show('✅ Descargado', 100);
+            setTimeout(Progress.hide, 1200);
+        }
+    },
+
+    /**
      * Procesa un archivo .docx o markdown
      * @param {File} file
      */
@@ -243,7 +272,7 @@ const FileHandler = {
         // SVG — path independiente (sin virtualización ni sanitización HTML)
         if (lowerName.endsWith('.svg')) {
             this.currentFileName = file.name;
-            this.currentFilePath = null;
+            this.currentDocumentToken = null;
             document.title = file.name + ' — Khipu Codex';
 
             const reader = new FileReader();
@@ -274,6 +303,7 @@ const FileHandler = {
 
         if (isMarkdown) {
             this.currentMarkdownName = file.name;
+            this.currentDocumentToken = null; // Archivo local del browser, no hay token Rust
             Progress.show('Leyendo markdown...', 30);
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -405,8 +435,10 @@ const FileHandler = {
             return;
         }
 
+        // Pasar documentToken (null para archivos locales del browser)
         TabManager.openDocument(name, wrapped, sections, {
-            markdown: null
+            markdown: null,
+            documentToken: this.currentDocumentToken
         });
 
         setTimeout(() => {
@@ -500,7 +532,8 @@ const FileHandler = {
         // Use TabManager to open as a tab
         TabManager.openDocument(name, cleanHtml, sections, {
             messages,
-            markdown: this.currentMarkdown
+            markdown: this.currentMarkdown,
+            documentToken: this.currentDocumentToken
         });
 
         // Log warnings de mammoth (si hay)

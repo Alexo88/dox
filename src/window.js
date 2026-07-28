@@ -33,12 +33,12 @@ const WindowControls = {
         // Sincronizar isMaximized cuando la ventana cambia externamente (Win+↑, snap, etc.)
         if (window.__TAURI__.event) {
             window.__TAURI__.event.listen('tauri://resize', () => {
-                window.__TAURI__.window.appWindow.isMaximized()
+                window.__TAURI__.invoke('is_window_maximized')
                     .then(maximized => {
                         this.isMaximized = maximized;
                         this._updateMaximizeIcon();
                     })
-                    .catch(err => console.error('isMaximized error:', err));
+                    .catch(err => console.error('is_window_maximized error:', err));
             });
         }
     },

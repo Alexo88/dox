@@ -19,7 +19,7 @@ const TabManager = {
      * @param {string} name — display name (filename)
      * @param {string} html — rendered HTML content
      * @param {Array} sections — parsed sections from Sectionizer
-     * @param {object} extras — optional { scrollY, messages, markdown }
+     * @param {object} extras — optional { scrollY, messages, markdown, documentToken }
      * @returns {number} tab id
      */
     openDocument(name, html, sections, extras = {}) {
@@ -38,7 +38,8 @@ const TabManager = {
             sections,
             scrollY: extras.scrollY || 0,
             messages: extras.messages || null,
-            markdown: extras.markdown || null
+            markdown: extras.markdown || null,
+            documentToken: extras.documentToken || null  // Token Rust para cerrar documento
         };
 
         this.tabs.set(id, tab);
@@ -90,6 +91,7 @@ const TabManager = {
     closeTab(id) {
         if (!this.tabs.has(id)) return;
 
+        const tab = this.tabs.get(id);
         const wasActive = id === this.activeTabId;
 
         if (wasActive) {
@@ -115,6 +117,12 @@ const TabManager = {
         } else {
             this.tabs.delete(id);
             this._renderTabBar();
+        }
+
+        // Cerrar documento en Rust (idempotente)
+        if (tab?.documentToken && typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
+            window.__TAURI__.invoke('close_document', { token: tab.documentToken })
+                .catch(err => console.warn('[Khipu] Error cerrando documento en Rust:', err));
         }
     },
 
