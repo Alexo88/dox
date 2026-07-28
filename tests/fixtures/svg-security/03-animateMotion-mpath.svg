@@ -1,0 +1,13 @@
+<!--
+  Adversarial SVG: animateMotion con mpath
+  animateMotion + mpath → ambos deben ser bloqueados
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <text y="20">animateMotion + mpath</text>
+  <path id="trazado" d="M10,50 Q50,10 90,50" fill="none" stroke="gray"/>
+  <circle r="5" fill="red">
+    <animateMotion dur="2s" repeatCount="indefinite">
+      <mpath href="#trazado"/>
+    </animateMotion>
+  </circle>
+</svg>

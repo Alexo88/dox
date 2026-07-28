@@ -1,0 +1,11 @@
+<!--
+  Adversarial SVG: set mutando href
+  <set> cambia href en runtime → debe ser bloqueado por el sanitizador
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <text y="20">set href → javascript:</text>
+  <a>
+    <text y="40" font-size="12">click me</text>
+    <set attributeName="href" to="javascript:alert(1)" begin="click"/>
+  </a>
+</svg>

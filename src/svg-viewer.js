@@ -7,8 +7,12 @@
    ═══════════════════════════════════════════ */
 const SvgViewer = {
     /**
-     * Sanitiza un SVG crudo: remueve scripts, foreignObject,
-     * atributos on*, estilos globales, y restringe href.
+     * Sanitiza un SVG crudo produciendo contenido estático.
+     *
+     * Elimina elementos activos (script, foreignObject, animaciones),
+     * atributos inline peligrosos (on*, style, href no-fragment),
+     * y produce solo SVG estructural seguro para un visor de lectura.
+     *
      * @param {string} svgText — contenido SVG crudo
      * @returns {string} SVG sanitizado (string)
      * @throws {Error} si no es un SVG válido
@@ -22,42 +26,49 @@ const SvgViewer = {
             throw new Error('El archivo no es un SVG válido');
         }
 
-        // 1. Remover <script> — XSS directo
-        const scripts = root.querySelectorAll('script');
-        scripts.forEach(s => s.remove());
+        // 1. Remover elementos activos y de animación
+        const REMOVED_TAGS = [
+            'script',           // XSS directo
+            'foreignObject',    // HTML embebido con scripts
+            'style',            // CSS global que rompe la app
+            'set',              // Mutación de atributos en runtime
+            'animate',          // Animación que cambia atributos
+            'animateTransform', // Animación de transformaciones
+            'animateMotion',    // Animación sobre un trazado
+            'mpath'             // Referencia de trazado para animateMotion
+        ];
+        REMOVED_TAGS.forEach(tag => {
+            root.querySelectorAll(tag).forEach(el => el.remove());
+        });
 
-        // 2. Remover <foreignObject> — puede contener HTML embebido con scripts
-        const foreignObjects = root.querySelectorAll('foreignObject');
-        foreignObjects.forEach(fo => fo.remove());
-
-        // 3. Remover <style> global — evita que el SVG rompa el CSS de la app
-        const styles = root.querySelectorAll('style');
-        styles.forEach(s => s.remove());
-
-        // 4. Remover atributos on* (onclick, onload, onerror, etc.)
+        // 2. Remover atributos on* (onclick, onload, onerror, etc.) y style
         const allElements = root.querySelectorAll('*');
         allElements.forEach(el => {
             Array.from(el.attributes).forEach(attr => {
-                if (attr.name.startsWith('on')) {
+                const name = attr.name.toLowerCase();
+                if (name.startsWith('on')) {
+                    el.removeAttribute(attr.name);
+                }
+                if (name === 'style') {
                     el.removeAttribute(attr.name);
                 }
             });
         });
 
-        // 5. Restringir href/xlink:href a fragmentos internos (#...)
-        const refTags = ['use', 'a', 'image', 'animate', 'animateTransform', 'set', 'cursor'];
-        refTags.forEach(tag => {
+        // 3. Restringir href/xlink:href exclusivamente a fragmentos internos (#id)
+        const REF_TAGS = ['use', 'a', 'image', 'cursor'];
+        REF_TAGS.forEach(tag => {
             root.querySelectorAll(tag).forEach(el => {
                 ['href', 'xlink:href'].forEach(attr => {
                     const val = el.getAttribute(attr);
-                    if (val && !val.startsWith('#') && !val.startsWith('#')) {
+                    if (val && !val.startsWith('#')) {
                         el.removeAttribute(attr);
                     }
                 });
             });
         });
 
-        // 6. Bloquear javascript: en href directo de <a>
+        // 4. Bloquear javascript: en href directo de <a> (defensa en profundidad)
         root.querySelectorAll('a').forEach(el => {
             ['href', 'xlink:href'].forEach(attr => {
                 const val = el.getAttribute(attr);

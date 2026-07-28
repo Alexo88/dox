@@ -1,0 +1,11 @@
+<!--
+  Adversarial SVG: animate mutando href
+  <animate> cambia href en runtime → debe ser bloqueado
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <text y="20">animate href → data:image/svg+xml</text>
+  <use href="#safe">
+    <animate attributeName="href" values="#safe;data:image/svg+xml,<script>alert(1)</script>" dur="1s"/>
+  </use>
+  <rect id="safe" x="10" y="30" width="20" height="20" fill="blue"/>
+</svg>

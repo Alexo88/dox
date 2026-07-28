@@ -1,0 +1,10 @@
+<!--
+  Adversarial SVG: javascript: directo en <a href>
+  Debe ser bloqueado por step 4 (y step 3 como defensa en profundidad)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <text y="20">javascript: directo en a</text>
+  <a href="javascript:alert('xss')">
+    <text y="40" font-size="12" fill="blue">click me</text>
+  </a>
+</svg>

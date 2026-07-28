@@ -1,0 +1,8 @@
+<!--
+  Adversarial SVG: style attribute con url()
+  Debe ser bloqueado por remoción de atributo style
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <text y="20">style attr con url()</text>
+  <rect x="10" y="30" width="50" height="50" fill="blue" style="background:url('data:text/html,<script>alert(1)</script>')"/>
+</svg>

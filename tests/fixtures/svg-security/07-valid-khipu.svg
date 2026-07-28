@@ -1,0 +1,16 @@
+<!--
+  SVG válido: debe renderizar correctamente
+  path, rect, circle, text, linearGradient, use href="#id"
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6c7bff"/>
+      <stop offset="100%" stop-color="#ff6c7b"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="180" height="180" rx="10" fill="url(#grad)"/>
+  <circle cx="100" cy="80" r="40" fill="white" opacity="0.8"/>
+  <text x="100" y="160" text-anchor="middle" font-size="20" fill="white">Khipu Codex</text>
+  <use href="#grad"/>
+</svg>
