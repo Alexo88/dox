@@ -1,16 +1,15 @@
 /**
  * Khipu Codex — Build Script
- * Empaqueta todo en un unico archivo HTML portable.
+ * Genera public/index.html para Tauri a partir del template index.html.
  *
  * Uso: node build.js
- * Salida: KhipuCodex.html (todo incluido, 100% offline)
+ * Salida: public/index.html (todo incluido para el webview de Tauri)
  */
 
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const OUT = path.join(ROOT, 'KhipuCodex.html');
 
 const STYLE_START = '<!-- DOCXLITE:STYLE_START -->';
 const STYLE_END = '<!-- DOCXLITE:STYLE_END -->';
@@ -77,7 +76,7 @@ const appJsModified = appJs.replace(
 );
 
 // ─── Ensamblar HTML final ───
-console.log('  → Ensamblando HTML portable...');
+console.log('  → Ensamblando HTML...');
 let output = html;
 
 // 1. Inline CSS dentro de los marcadores
@@ -85,15 +84,11 @@ const styleBlock = '<style>\n' + css + '\n    </style>';
 output = replaceBlock(output, STYLE_START, STYLE_END, styleBlock);
 
 // 2. Inline scripts (marked.js + app.js) dentro de los marcadores
-// Prepend marked source so it's available before app.js
 const scriptBlock = '<script>\n' + markedSrc + '\n    </script>\n    <script>\n' + appJsModified + '\n    </script>';
 output = replaceBlock(output, SCRIPTS_START, SCRIPTS_END, scriptBlock);
 
 // ─── Escribir archivo de salida ───
-// 1. KhipuCodex.html (portable standalone)
-fs.writeFileSync(OUT, output, 'utf-8');
-
-// 2. public/index.html (para Tauri - mismo contenido embebido)
+// public/index.html (para el webview de Tauri)
 const PUBLIC_DIR = path.join(ROOT, 'public');
 if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 const TAURI_OUT = path.join(PUBLIC_DIR, 'index.html');
@@ -107,12 +102,10 @@ if (fs.existsSync(FAVICON_SRC) && !fs.existsSync(FAVICON_DST)) {
     console.log('  → Copiado favicon.ico a public/');
 }
 
-const sizeKB = (fs.statSync(OUT).size / 1024).toFixed(1);
-const sizeMB = (fs.statSync(OUT).size / (1024 * 1024)).toFixed(2);
+const sizeKB = (fs.statSync(TAURI_OUT).size / 1024).toFixed(1);
+const sizeMB = (fs.statSync(TAURI_OUT).size / (1024 * 1024)).toFixed(2);
 
 console.log(`\n  ✅ Build exitoso!`);
-console.log(`  📄 KhipuCodex.html (${sizeKB} KB / ${sizeMB} MB)`);
-console.log(`  📁 ${OUT}`);
-console.log(`  📁 ${TAURI_OUT} (Tauri)`);
-console.log(`\n  → Abrí KhipuCodex.html en cualquier navegador. No necesita servidor.`);
-console.log(`  → O ejecutá "dx" para lanzar la versión nativa.\n`);
+console.log(`  📄 public/index.html (${sizeKB} KB / ${sizeMB} MB)`);
+console.log(`  📁 ${TAURI_OUT}`);
+console.log(`\n  → Ejecutá "dx" o "cargo tauri build" para generar el EXE.\n`);

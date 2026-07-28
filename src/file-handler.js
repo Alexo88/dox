@@ -168,15 +168,16 @@ const FileHandler = {
         if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
             try {
                 // Tauri: guardar con token existente o pedir destino
+                let savedPath = null;
                 if (this.currentDocumentToken) {
                     // Ya tenemos token — sobrescribir el mismo archivo
-                    const result = await window.__TAURI__.invoke('save_markdown', {
+                    savedPath = await window.__TAURI__.invoke('save_markdown', {
                         token: this.currentDocumentToken,
                         existing_token: this.currentDocumentToken,
                         content: content
                     });
 
-                    this.currentFileName = result.replace(/\\/g, '/').split('/').pop();
+                    this.currentFileName = savedPath.replace(/\\/g, '/').split('/').pop();
                     document.title = this.currentFileName + ' — Khipu Codex';
                 } else {
                     // No hay token (archivo abierto por file picker) — Save As dialog
@@ -186,33 +187,18 @@ const FileHandler = {
                 saveMarkdownVersion(name, content); // backup post-save
                 Progress.show('✅ Guardado', 100);
                 setTimeout(Progress.hide, 1200);
-                console.log('[Khipu] Markdown guardado en:', result);
+                console.log('[Khipu] Markdown guardado en:', savedPath);
             } catch (err) {
                 console.error('[Khipu] Error al guardar:', err);
                 Progress.show('❌ Error al guardar', 0);
                 setTimeout(Progress.hide, 2000);
             }
-        } else {
-            // Browser: descarga via Blob
-            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = name;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            Progress.show('✅ Descargado', 100);
-            setTimeout(Progress.hide, 1200);
         }
     },
 
     /**
      * Guarda como nuevo archivo (Save As) — usa comando Rust save_markdown_as.
-     * Funciona sin token inicial (archivos abiertos por file picker).
-     * Actualiza currentDocumentToken y currentFileName con el resultado.
+     * Solo funciona en Tauri (EXE-only). Sin fallback browser.
      * @param {string} content — Contenido markdown a guardar
      * @param {string} suggestedName — Nombre sugerido para el diálogo
      */
@@ -243,20 +229,6 @@ const FileHandler = {
                 Progress.show('❌ Error al guardar', 0);
                 setTimeout(Progress.hide, 2000);
             }
-        } else {
-            // Browser: descarga via Blob
-            const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = suggestedName;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            Progress.show('✅ Descargado', 100);
-            setTimeout(Progress.hide, 1200);
         }
     },
 

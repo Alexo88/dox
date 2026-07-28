@@ -1,8 +1,8 @@
 # Khipu Codex
 
-**Visor ultraligero de documentos DOCX, Markdown y SVG — Multi-pestaña, 100% Offline.**
+**Visor portable de documentos para Windows — un solo EXE, 100% offline.**
 
-Khipu Codex es una herramienta minimalista para leer, revisar y anotar documentos sin suites pesadas. Basado en Tauri v1 + Rust, maneja múltiples archivos de cientos de páginas con fluidez total y consumo mínimo de recursos.
+Khipu Codex es una herramienta minimalista para leer, revisar y anotar documentos DOCX, Markdown y SVG sin suites pesadas. Basado en Tauri v1 + Rust, maneja múltiples archivos de cientos de páginas con fluidez total y consumo mínimo de recursos.
 
 ---
 
@@ -13,11 +13,11 @@ Khipu Codex es una herramienta minimalista para leer, revisar y anotar documento
 - **Formatos:** `.docx`, `.md`, `.markdown`, `.svg` — todos nativos, sin plugins.
 - **Virtual Scrolling:** Renderizado inteligente que solo dibuja lo que ves en pantalla. Documentos de 500+ páginas sin que el navegador se cuelgue.
 - **Anotaciones en Canvas:** Dibujá a mano alzada sobre las secciones del documento. Toolbar flotante con colores, grosores y borrador. Persistencia por documento en localStorage.
-- **Editor de Markdown:** Editá y previsualizá archivos `.md`. Guardado a disco (Tauri `writeTextFile`) o descarga (Blob). Backup automático de versiones.
+- **Editor de Markdown:** Editá y previsualizá archivos `.md`. Guardado a disco nativo. Backup automático de versiones.
 - **Búsqueda Inteligente (Ctrl+F):** Buscá texto en todas las secciones, con resaltado en tiempo real y navegación entre resultados.
 - **Modo Oscuro/Claro:** Interfaz que se adapta a tu preferencia visual y se persiste entre sesiones.
 - **100% Privacidad & Offline:** Tus documentos nunca salen de tu computadora. No requiere internet ni servidores externos.
-- **Open-with:** Soporte para "Abrir con..." desde el explorador de Windows (Tauri).
+- **Open-with:** Soporte para "Abrir con..." desde el explorador de Windows.
 
 ---
 
@@ -30,7 +30,7 @@ Khipu Codex es una herramienta minimalista para leer, revisar y anotar documento
 | Procesamiento DOCX | Mammoth.js en Web Worker |
 | Parser Markdown | marked.js v15.0.12 (GFM) |
 | Anotaciones | Canvas API nativa + localStorage |
-| Empaquetado | Tauri CLI + build.js (781 KB output) |
+| Empaquetado | Tauri CLI para EXE nativo |
 
 ---
 
@@ -59,21 +59,26 @@ src/
 
 ## Cómo Usarlo
 
-### Modo portable (HTML)
-Abrí `index.html` en cualquier navegador moderno. Sin instalación. Función completa excepto open-with y guardado a disco nativo.
+Ejecutá `dx.bat` o el binario compilado en `src-tauri/target/release/app.exe` para la ventana nativa con arrastrar archivos, guardado a disco y open-with.
 
-### Modo nativo (EXE)
-Ejecutá `dx.bat` o el binario compilado en `src-tauri/target/release/app.exe` para ventana nativa con arrastrar archivos, guardado a disco y open-with.
+### Requisito de sistema
+
+- **Windows 10 o superior** con **WebView2 Runtime** instalado (viene incluido en Windows 11 y en updates recientes de Windows 10).
+- Si no lo tenés, descargalo gratis de [Microsoft](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+
+### Descargar EXE release
+
+Descargá la última versión desde la sección [Releases](https://github.com/Alexo88/dox/releases) de GitHub. Es un solo archivo `.exe` portable — no requiere instalación.
 
 ---
 
 ## Build
 
 ```bash
-# HTML portable
+# Empaquetar frontend (genera public/index.html)
 node build.js
 
-# Nativo Windows (dentro de src-tauri)
+# Compilar EXE nativo
 cd src-tauri
 cargo tauri build
 ```
@@ -81,5 +86,7 @@ cargo tauri build
 Requiere: Rust (Cargo), Node.js, Tauri CLI (`cargo install tauri-cli --version "^1"`).
 
 ---
+
+## Licencia
 
 **v0.3.0** — Hecho por **Maudev** — Pensado para la velocidad.
