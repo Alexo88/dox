@@ -419,26 +419,66 @@ const FileHandler = {
     },
 
     /**
-     * Sanitiza HTML contra XSS: filtra protocolos en href y elimina handlers inline.
-     * Sin DOMPurify (no está en el bundle) usa DOMParser nativo.
-     * Reemplazar cuerpo con DOMPurify cuando se agregue al bundle.
+     * Sanitiza HTML contra XSS usando una política allowlist.
+     * No depende de marked ni de DOMPurify — opera sobre el HTML ya generado.
+     *
+     * Elimina elementos activos, atributos inline peligrosos y
+     * restringe protocolos en URLs. No confía en marked como frontera de seguridad.
      */
     _sanitizeHtml(html) {
+        const BLOCKED_TAGS = [
+            'script', 'style', 'iframe', 'object', 'embed', 'form',
+            'input', 'button', 'textarea', 'select', 'option', 'optgroup',
+            'meta', 'base', 'link', 'noscript', 'svg', 'math'
+        ];
+        const DANGEROUS_ATTRS = [
+            'srcdoc', 'formaction', 'formmethod', 'formenctype',
+            'action', 'data', 'xlink:href', 'autofocus'
+        ];
         const SAFE_PROTOCOLS = ['http://', 'https://', 'mailto:', '#', '/'];
+        const URL_ATTRS = ['href', 'src', 'srcset'];
+
         const doc = new DOMParser().parseFromString(html, 'text/html');
 
-        // Filtrar href en links
-        doc.querySelectorAll('a[href]').forEach(a => {
-            const href = a.getAttribute('href');
-            const hasSafeProtocol = SAFE_PROTOCOLS.some(p => href.toLowerCase().startsWith(p));
-            if (!hasSafeProtocol) a.setAttribute('href', '#');
+        // 1. Remover elementos activos/peligrosos
+        BLOCKED_TAGS.forEach(tag => {
+            doc.querySelectorAll(tag).forEach(el => el.remove());
         });
 
-        // Eliminar event handlers inline (onclick, onerror, etc.)
+        // 2. Remover atributos inline peligrosos y handlers de eventos
         doc.querySelectorAll('*').forEach(el => {
             Array.from(el.attributes).forEach(attr => {
-                if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+                const name = attr.name.toLowerCase();
+                if (name.startsWith('on')) {
+                    el.removeAttribute(attr.name);
+                } else if (DANGEROUS_ATTRS.includes(name)) {
+                    el.removeAttribute(attr.name);
+                }
             });
+        });
+
+        // 3. Restringir protocolos en href, src, srcset
+        doc.querySelectorAll('*').forEach(el => {
+            URL_ATTRS.forEach(attr => {
+                const val = el.getAttribute(attr);
+                if (!val) return;
+                const isSafe = SAFE_PROTOCOLS.some(p => val.toLowerCase().startsWith(p));
+                if (!isSafe) el.removeAttribute(attr);
+            });
+        });
+
+        // 4. Agregar rel="noopener noreferrer" a enlaces externos
+        doc.querySelectorAll('a[href]').forEach(a => {
+            const href = a.getAttribute('href') || '';
+            if (/^https?:\/\//i.test(href)) {
+                const rel = a.getAttribute('rel') || '';
+                const extras = ['noopener', 'noreferrer'];
+                extras.forEach(r => {
+                    if (!rel.split(/\s+/).includes(r)) {
+                        a.setAttribute('rel', (rel + ' ' + r).trim());
+                    }
+                });
+            }
         });
 
         return doc.body.innerHTML;
@@ -453,12 +493,12 @@ const FileHandler = {
         // Si ya hay una tab activa con el mismo documento, actualizarla en vez de crear duplicado
         const active = TabManager.getActiveTab();
         if (active && active.name === name) {
-            TabManager.updateActiveTab(html, sections, this.currentMarkdown);
+            TabManager.updateActiveTab(cleanHtml, sections, this.currentMarkdown);
             return;
         }
 
         // Use TabManager to open as a tab
-        TabManager.openDocument(name, html, sections, {
+        TabManager.openDocument(name, cleanHtml, sections, {
             messages,
             markdown: this.currentMarkdown
         });
