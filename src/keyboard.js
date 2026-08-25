@@ -26,6 +26,15 @@ function initKeyboardShortcuts() {
             }
         }
 
+        // Ctrl+\ — toggle split mode (comparación)
+        if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof SplitManager !== 'undefined') {
+                SplitManager.toggleSplit();
+            }
+        }
+
         // Ctrl+F — focus titlebar search
         if (e.ctrlKey && e.key.toLowerCase() === 'f') {
             e.preventDefault();

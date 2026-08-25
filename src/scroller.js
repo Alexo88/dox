@@ -3,40 +3,56 @@
 'use strict';
 
 /* ═══════════════════════════════════════════
-   4. VirtualScroller
+   4. VirtualScroller (Multi-Instance & Single-View)
    ═══════════════════════════════════════════ */
-const VirtualScroller = {
-    sections: [],       // Datos de cada sección
-    elements: [],       // Refs DOM de cada <div.section>
-    observer: null,     // IntersectionObserver
-    materialized: new Set(), // IDs de secciones con DOM real
-    _measuring: false,  // true durante _measureAll — suprime hooks de anotaciones
+class VirtualScrollerInstance {
+    constructor(container = null) {
+        this.container = container; // null = window / #viewer, or HTMLElement
+        this.sections = [];
+        this.elements = [];
+        this.observer = null;
+        this.materialized = new Set();
+        this._measuring = false;
+        this.onMeasured = null;
+    }
+
+    _getViewer() {
+        return this.container || (typeof viewer !== 'undefined' ? viewer : document.getElementById('viewer'));
+    }
+
+    _isContainerWindow() {
+        return !this.container || (typeof viewer !== 'undefined' && this.container === viewer);
+    }
 
     /**
      * Inicializa el viewer con las secciones parseadas.
      * @param {Array} sections — del Sectionizer
      */
     init(sections, options = {}) {
-        this.sections = sections;
+        this.destroy();
+        this.sections = sections || [];
         this.elements = [];
         this.materialized = new Set();
         this.onMeasured = typeof options.onMeasured === 'function' ? options.onMeasured : null;
-        viewer.innerHTML = '';
+
+        const targetViewer = this._getViewer();
+        if (!targetViewer) return;
+        targetViewer.innerHTML = '';
 
         // Crear un div por cada sección
         const fragment = document.createDocumentFragment();
-        sections.forEach((section, idx) => {
+        this.sections.forEach((section, idx) => {
             const el = document.createElement('div');
             el.className = 'section';
             el.dataset.sectionId = idx;
             fragment.appendChild(el);
             this.elements.push(el);
         });
-        viewer.appendChild(fragment);
+        targetViewer.appendChild(fragment);
 
         // Render inicial: materializar todas para medir alturas
         this._measureAll();
-    },
+    }
 
     /**
      * Materializa todas las secciones, mide alturas, luego desmaterializa las lejanas.
@@ -48,30 +64,26 @@ const VirtualScroller = {
         let idx = 0;
 
         const measureBatch = (deadline) => {
-            // Procesar en lotes según tiempo disponible
             while (idx < total && (deadline ? deadline.timeRemaining() > 5 : true)) {
                 this._materialize(idx);
                 idx++;
             }
 
             if (idx < total) {
-                // Aún quedan secciones — continuar en idle
                 if (typeof requestIdleCallback !== 'undefined') {
                     requestIdleCallback(measureBatch);
                 } else {
                     requestAnimationFrame(() => measureBatch(null));
                 }
             } else {
-                // Todas medidas — ahora medir alturas y configurar observer
                 requestAnimationFrame(() => {
                     this.elements.forEach((el, i) => {
-                        this.sections[i].height = el.offsetHeight;
+                        if (this.sections[i]) {
+                            this.sections[i].height = el.offsetHeight;
+                        }
                     });
 
-                    // Fin de la medición — restaurar hooks de anotaciones
                     this._measuring = false;
-
-                    // Desmaterializar secciones fuera del viewport inicial
                     this._dematerializeDistant();
                     this._setupObserver();
                     if (this.onMeasured) this.onMeasured();
@@ -84,27 +96,35 @@ const VirtualScroller = {
         } else {
             measureBatch(null);
         }
-    },
+    }
 
     /**
      * Desmaterializa secciones que están lejos del viewport actual.
      */
     _dematerializeDistant() {
-        const viewportTop = window.scrollY;
-        const viewportBottom = viewportTop + window.innerHeight;
-        const buffer = window.innerHeight * 2; // 2x viewport buffer
+        const isWindow = this._isContainerWindow();
+        const viewportTop = isWindow ? window.scrollY : (this.container ? this.container.scrollTop : 0);
+        const viewportHeight = isWindow ? window.innerHeight : (this.container ? this.container.clientHeight : window.innerHeight);
+        const viewportBottom = viewportTop + viewportHeight;
+        const buffer = viewportHeight * 2;
 
         this.elements.forEach((el, idx) => {
-            const rect = el.getBoundingClientRect();
-            const elTop = rect.top + window.scrollY;
-            const elBottom = elTop + rect.height;
+            let elTop, elHeight;
+            if (isWindow) {
+                const rect = el.getBoundingClientRect();
+                elTop = rect.top + window.scrollY;
+                elHeight = rect.height;
+            } else {
+                elTop = el.offsetTop;
+                elHeight = el.offsetHeight || (this.sections[idx] ? this.sections[idx].height : 0);
+            }
+            const elBottom = elTop + elHeight;
 
-            // Si está fuera del buffer, desmaterializar
             if (elBottom < viewportTop - buffer || elTop > viewportBottom + buffer) {
                 this._dematerialize(idx);
             }
         });
-    },
+    }
 
     /**
      * Configura IntersectionObserver para virtualización dinámica.
@@ -112,17 +132,23 @@ const VirtualScroller = {
     _setupObserver() {
         if (this.observer) this.observer.disconnect();
 
+        const options = {
+            rootMargin: typeof OBSERVER_MARGIN !== 'undefined' ? OBSERVER_MARGIN : '800px 0px'
+        };
+        if (!this._isContainerWindow() && this.container) {
+            options.root = this.container;
+        }
+
         this.observer = new IntersectionObserver(
             (entries) => this._handleIntersection(entries),
-            { rootMargin: OBSERVER_MARGIN }
+            options
         );
 
         this.elements.forEach(el => this.observer.observe(el));
-    },
+    }
 
     /**
      * Callback del IntersectionObserver.
-     * Materializa secciones que entran, desmaterializa las que salen.
      */
     _handleIntersection(entries) {
         entries.forEach(entry => {
@@ -133,7 +159,7 @@ const VirtualScroller = {
                 this._dematerialize(idx);
             }
         });
-    },
+    }
 
     /**
      * Inyecta HTML real en una sección.
@@ -142,25 +168,24 @@ const VirtualScroller = {
         if (this.materialized.has(idx)) return;
         const el = this.elements[idx];
         const section = this.sections[idx];
+        if (!el || !section) return;
 
         el.innerHTML = section.html;
         el.classList.remove('section--placeholder');
         el.style.height = '';
 
-        // Lazy loading + async decoding para imágenes
         const imgs = el.querySelectorAll('img');
         imgs.forEach(img => {
             img.loading = 'lazy';
             img.decoding = 'async';
         });
 
-        // Hook para AnnotationLayer (solo fuera de medición inicial)
-        if (!this._measuring && typeof AnnotationLayer !== 'undefined') {
+        if (!this._measuring && typeof AnnotationLayer !== 'undefined' && this._isContainerWindow()) {
             AnnotationLayer.restoreCanvas(el, idx);
         }
 
         this.materialized.add(idx);
-    },
+    }
 
     /**
      * Reemplaza contenido con placeholder de altura fija.
@@ -169,17 +194,14 @@ const VirtualScroller = {
         if (!this.materialized.has(idx)) return;
         const el = this.elements[idx];
         const section = this.sections[idx];
+        if (!el || !section) return;
 
-        // Guardar altura medida si no se tenía
         if (!section.height) {
             section.height = el.offsetHeight;
         }
-
-        // Protección: si la altura aún no se midió, no desmaterializar
         if (!section.height || section.height <= 0) return;
 
-        // Hook para AnnotationLayer (solo fuera de medición inicial)
-        if (!this._measuring && typeof AnnotationLayer !== 'undefined') {
+        if (!this._measuring && typeof AnnotationLayer !== 'undefined' && this._isContainerWindow()) {
             AnnotationLayer.detachCanvas(el, idx);
         }
 
@@ -188,14 +210,28 @@ const VirtualScroller = {
         el.style.height = section.height + 'px';
 
         this.materialized.delete(idx);
-    },
+    }
 
     /**
      * Fuerza materialización de una sección específica (para búsqueda).
-     * @returns {HTMLElement} el elemento de la sección
      */
     ensureMaterialized(idx) {
         this._materialize(idx);
         return this.elements[idx];
     }
-};
+
+    /**
+     * Limpia observador y estado al cambiar o destruir tab.
+     */
+    destroy() {
+        if (this.observer) {
+            this.observer.disconnect();
+            this.observer = null;
+        }
+        this.materialized.clear();
+        this.elements = [];
+        this.sections = [];
+    }
+}
+
+const VirtualScroller = new VirtualScrollerInstance();

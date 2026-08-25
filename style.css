@@ -95,19 +95,27 @@ body {
     background: rgba(245, 245, 248, 0.95);
 }
 
-/* Interactive elements must NOT be draggable - apply to ALL interactive elements */
+/* Comprehensive titlebar drag regions */
+#tabs-zone,
+#tabs-container,
+#search-zone,
+.topbar-actions,
+#window-controls {
+    -webkit-app-region: drag;
+}
+
+/* Interactive elements must NOT be draggable - surgical exclusion for all interactive controls */
 #custom-titlebar button,
 #custom-titlebar input,
 #custom-titlebar select,
 #custom-titlebar textarea,
-[data-no-drag] {
+#custom-titlebar .tab,
+#custom-titlebar .tab-name,
+#custom-titlebar .tab-close,
+.search-input-wrapper,
+[data-no-drag],
+[data-no-drag] * {
     -webkit-app-region: no-drag;
-    cursor: pointer;
-}
-
-/* But tabs container and open button inside tabs-zone ARE draggable */
-#tabs-zone {
-    -webkit-app-region: drag;
 }
 
 /* ── Tabs Zone ── */
@@ -237,21 +245,29 @@ body {
     flex: 1; /* Grow to fill available space */
     min-width: 0;
     height: 100%;
-    padding: 0 12px;
-    -webkit-app-region: no-drag;
+    padding: 0 10px;
+    -webkit-app-region: drag;
     justify-content: center;
+}
+
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 0 1 240px;
+    min-width: 110px;
+    -webkit-app-region: no-drag;
 }
 
 #global-search {
     width: 100%;
-    max-width: 400px;
-    height: 28px;
+    height: 26px;
     padding: 0 10px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     background: rgba(255, 255, 255, 0.05);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 12px;
     -webkit-app-region: no-drag;
     outline: none;
     transition: border-color var(--transition), background var(--transition);
@@ -267,32 +283,72 @@ body {
     color: var(--text-muted);
 }
 
-#search-zone button {
+.topbar-actions {
     display: flex;
     align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+}
+
+/* Action text buttons (Editar, Guardar) */
+#btn-edit, #btn-save {
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border: none;
+    gap: 5px;
+    width: auto;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-app-region: no-drag;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+#btn-edit:hover, #btn-save:hover {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Icon action buttons */
+#btn-annotate, #btn-theme, #btn-open-mode {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid transparent;
     border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
+    font-size: 0.85rem;
     cursor: pointer;
-    transition: background var(--transition), color var(--transition);
+    -webkit-app-region: no-drag;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 
-#search-zone button:hover {
+#btn-annotate:hover, #btn-theme:hover, #btn-open-mode:hover {
     background: var(--accent-glow);
     color: var(--accent);
+    border-color: var(--border);
 }
 
 /* ── Window Controls ── */
 #window-controls {
     display: flex;
-    align-items: stretch; /* Changed from flex-start to stretch - fill height */
+    align-items: stretch;
     margin-left: auto;
-    -webkit-app-region: no-drag;
-    height: 100%; /* Take full titlebar height */
+    -webkit-app-region: drag;
+    height: 100%;
 }
 
 #window-controls button {
@@ -318,6 +374,11 @@ body {
 #btn-close:hover {
     background: #e81123 !important;
     color: #ffffff !important;
+}
+
+#icon-restore,
+#icon-sun {
+    display: none;
 }
 
 [data-theme="light"] #window-controls button:hover {
@@ -797,4 +858,206 @@ mark.search-highlight.active {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-secondary);
+}
+
+/* ─── Split View (Modo Comparación) ─── */
+#btn-split {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-app-region: no-drag;
+    transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+#btn-split:hover, #btn-split.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+#split-toolbar {
+    position: fixed;
+    top: calc(var(--titlebar-h) + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 150;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    font-size: 0.78rem;
+    user-select: none;
+    animation: slideIn 0.15s ease-out;
+}
+
+#split-info {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-right: 4px;
+}
+
+.split-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.split-tool-btn:hover {
+    background: var(--accent-glow);
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.split-tool-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.split-tool-btn.close-btn:hover {
+    background: #e81123 !important;
+    border-color: #e81123 !important;
+    color: #ffffff !important;
+}
+
+#split-viewer {
+    position: fixed;
+    top: var(--titlebar-h);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    background: var(--bg-primary);
+}
+
+.split-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    position: relative;
+}
+
+.split-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 28px;
+    padding: 0 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    user-select: none;
+}
+
+.split-panel-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.split-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px 80px;
+    scroll-behavior: smooth;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.split-panel-content .section {
+    margin-bottom: 1.25rem;
+    max-width: 100%;
+}
+
+.split-panel-content pre,
+.split-panel-content table,
+.split-panel-content blockquote {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.split-panel-content pre code {
+    white-space: pre;
+    word-break: normal;
+}
+
+.split-divider {
+    width: 6px;
+    margin: 0 -2px;
+    height: 100%;
+    background: var(--border);
+    flex-shrink: 0;
+    cursor: col-resize;
+    z-index: 10;
+    transition: background 0.15s ease;
+}
+
+.split-divider:hover,
+.split-divider.dragging {
+    background: var(--accent);
+}
+
+/* ─── Drag to Split Drop Zone ─── */
+#split-drop-zone {
+    position: fixed;
+    top: var(--titlebar-h);
+    right: 0;
+    width: 50%;
+    bottom: 0;
+    z-index: 90;
+    background: rgba(108, 123, 255, 0.12);
+    border-left: 2px dashed var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    pointer-events: auto;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.split-drop-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-align: center;
+    padding: 20px;
+}
+
+.split-drop-icon {
+    font-size: 2rem;
 }

@@ -16,7 +16,7 @@
     <!-- ═══ Custom Titlebar (frameless) ═══ -->
     <header id="custom-titlebar" data-tauri-drag-region>
         <!-- Tabs zone (left) -->
-        <div id="tabs-zone" data-tauri-drag-region>
+        <div id="tabs-zone">
             <div id="tabs-container"></div>
             <button id="btn-open" title="Abrir archivo (Ctrl+O)" aria-label="Abrir archivo" data-no-drag>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -27,37 +27,43 @@
         </div>
 
         <!-- Search zone (center) -->
-        <div id="search-zone" data-no-drag>
-            <input type="text" id="global-search" placeholder="Buscar..." autocomplete="off">
-            <button id="btn-edit" title="Editar markdown" aria-label="Editar markdown" class="hidden">Editar</button>
-            <button id="btn-save" title="Guardar (Ctrl+S)" aria-label="Guardar markdown" class="hidden">💾 Guardar</button>
-            <button id="btn-annotate" title="Anotaciones (dibujo)" aria-label="Activar anotaciones" class="hidden">✏️</button>
-            <button id="btn-theme" title="Cambiar tema" aria-label="Cambiar tema" data-no-drag>
-                <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-                <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                </svg>
-            </button>
+        <div id="search-zone">
+            <div class="search-input-wrapper" data-no-drag>
+                <input type="text" id="global-search" placeholder="Buscar..." autocomplete="off" data-no-drag>
+            </div>
+            <div class="topbar-actions">
+                <button id="btn-edit" title="Editar markdown" aria-label="Editar markdown" class="hidden" data-no-drag>📝 Editar</button>
+                <button id="btn-save" title="Guardar (Ctrl+S)" aria-label="Guardar markdown" class="hidden" data-no-drag>💾 Guardar</button>
+                <button id="btn-annotate" title="Anotaciones (dibujo)" aria-label="Activar anotaciones" class="hidden" data-no-drag>✏️</button>
+                <button id="btn-split" title="Comparar documentos lado a lado (Ctrl+\)" aria-label="Comparar documentos" class="hidden" data-no-drag>📖 Comparar</button>
+                <button id="btn-open-mode" title="Modo de apertura: Reusar ventana (Pestañas)" aria-label="Modo de apertura" data-no-drag>🗂️</button>
+                <button id="btn-theme" title="Cambiar tema" aria-label="Cambiar tema" data-no-drag>
+                    <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                    <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/>
+                        <line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         <!-- Window controls zone (right) -->
         <div id="window-controls">
-            <button id="btn-minimize" title="Minimizar" aria-label="Minimizar">
+            <button id="btn-minimize" title="Minimizar" aria-label="Minimizar" data-no-drag>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
                     <line x1="3" y1="8" x2="13" y2="8"/>
                 </svg>
             </button>
-            <button id="btn-maximize" title="Maximizar" aria-label="Maximizar">
+            <button id="btn-maximize" title="Maximizar" aria-label="Maximizar" data-no-drag>
                 <svg id="icon-maximize" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="3" y="3" width="10" height="10" rx="1"/>
                 </svg>
@@ -67,7 +73,7 @@
                     <rect x="3" y="5" width="8" height="8" rx="1"/>
                 </svg>
             </button>
-            <button id="btn-close" title="Cerrar" aria-label="Cerrar">
+            <button id="btn-close" title="Cerrar" aria-label="Cerrar" data-no-drag>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                     <line x1="4" y1="4" x2="12" y2="12"/>
                     <line x1="12" y1="4" x2="4" y2="12"/>
@@ -84,6 +90,14 @@
         <button id="search-prev" title="Anterior" aria-label="Resultado anterior">▲</button>
         <button id="search-next" title="Siguiente" aria-label="Resultado siguiente">▼</button>
         <button id="search-close" title="Cerrar (Esc)" aria-label="Cerrar búsqueda">✕</button>
+    </div>
+
+    <!-- ═══ Split Toolbar (Modo Comparación) ═══ -->
+    <div id="split-toolbar" class="hidden">
+        <span id="split-info">📖 Comparación</span>
+        <button id="btn-split-sync" class="split-tool-btn active" title="Alternar Scroll Sincronizado" aria-label="Scroll sincronizado">🔗 Sync</button>
+        <button id="btn-split-swap" class="split-tool-btn" title="Intercambiar paneles (Swap)" aria-label="Intercambiar paneles">⇄ Swap</button>
+        <button id="btn-split-close" class="split-tool-btn close-btn" title="Cerrar split (Ctrl+\)" aria-label="Cerrar split">✕</button>
     </div>
 
     <!-- ═══ Progress bar ═══ -->
@@ -107,8 +121,33 @@
         </div>
     </main>
 
-    <!-- ═══ Viewer (virtualizado) ═══ -->
+    <!-- ═══ Viewer (virtualizado único) ═══ -->
     <article id="viewer" class="hidden"></article>
+
+    <!-- ═══ Split Viewer (2 paneles lado a lado) ═══ -->
+    <div id="split-viewer" class="hidden">
+        <div id="split-panel-left" class="split-panel">
+            <div class="split-panel-header">
+                <span id="split-left-title" class="split-panel-title"></span>
+            </div>
+            <article id="viewer-left" class="split-panel-content"></article>
+        </div>
+        <div class="split-divider"></div>
+        <div id="split-panel-right" class="split-panel">
+            <div class="split-panel-header">
+                <span id="split-right-title" class="split-panel-title"></span>
+            </div>
+            <article id="viewer-right" class="split-panel-content"></article>
+        </div>
+    </div>
+
+    <!-- ═══ Drag-to-split lateral dropzone ═══ -->
+    <div id="split-drop-zone" class="hidden">
+        <div class="split-drop-content">
+            <span class="split-drop-icon">📖</span>
+            <span class="split-drop-text">Soltá aquí para comparar en vista dividida</span>
+        </div>
+    </div>
 
     <textarea id="markdown-editor" class="hidden" spellcheck="false"></textarea>
 

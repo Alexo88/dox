@@ -10,6 +10,7 @@ const customTitlebar = $('custom-titlebar');
 const tabsContainer = $('tabs-container');
 const btnOpen = $('btn-open');
 const btnTheme = $('btn-theme');
+const btnOpenMode = $('btn-open-mode');
 const btnEdit = $( 'btn-edit' );
 const btnSave = $('btn-save');
 const globalSearch = $('global-search');
@@ -43,3 +44,18 @@ const iconSun = $('icon-sun');
 // Annotation toolbar
 const btnAnnotate = $('btn-annotate');
 const annotationToolbar = $('annotation-toolbar');
+
+// Split View (Modo Comparación)
+const btnSplit = $('btn-split');
+const splitToolbar = $('split-toolbar');
+const btnSplitSync = $('btn-split-sync');
+const btnSplitSwap = $('btn-split-swap');
+const btnSplitClose = $('btn-split-close');
+const splitViewer = $('split-viewer');
+const splitPanelLeft = $('split-panel-left');
+const splitPanelRight = $('split-panel-right');
+const splitLeftTitle = $('split-left-title');
+const splitRightTitle = $('split-right-title');
+const viewerLeft = $('viewer-left');
+const viewerRight = $('viewer-right');
+const splitDropZone = $('split-drop-zone');

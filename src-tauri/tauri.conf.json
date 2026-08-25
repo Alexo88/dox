@@ -65,13 +65,13 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 700,
+        "height": 960,
         "resizable": true,
         "title": "Khipu Codex",
-        "width": 900,
+        "width": 780,
         "center": true,
-        "minWidth": 600,
-        "minHeight": 500,
+        "minWidth": 460,
+        "minHeight": 560,
         "fileDropEnabled": false,
         "decorations": false,
         "transparent": true

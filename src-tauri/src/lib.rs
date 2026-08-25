@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{State, Window};
+use tauri::{Manager, State, Window};
 use tauri::api::dialog::blocking::FileDialogBuilder;
 use uuid::Uuid;
 
@@ -20,7 +20,7 @@ impl Default for AppState {
     }
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Clone)]
 struct DocumentInfo {
     token: String,
     content: Vec<u8>,
@@ -34,6 +34,12 @@ struct SaveAsResult {
     new_token: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+struct SingleInstancePayload {
+    args: Vec<String>,
+    cwd: String,
+}
+
 /// Detecta si un archivo es texto basándose en la extensión
 fn is_text_file(path: &str) -> bool {
     let lower = path.to_lowercase();
@@ -43,6 +49,30 @@ fn is_text_file(path: &str) -> bool {
 /// Genera un nuevo token UUID v4
 fn generate_token() -> String {
     Uuid::new_v4().to_string()
+}
+
+/// Ruta para settings de la aplicación
+fn get_settings_path() -> PathBuf {
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        let dir = Path::new(&app_data).join("com.maudev.khipucodex");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join("settings.json")
+    } else {
+        PathBuf::from("settings.json")
+    }
+}
+
+/// Lee el modo de apertura ("reuse" o "new_window")
+fn read_open_mode() -> String {
+    let path = get_settings_path();
+    if let Ok(content) = std::fs::read_to_string(path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(mode) = val.get("open_mode").and_then(|v| v.as_str()) {
+                return mode.to_string();
+            }
+        }
+    }
+    "reuse".to_string()
 }
 
 /// Lee un archivo (texto o binario según extensión)
@@ -61,16 +91,13 @@ fn atomic_write(path: &str, content: &[u8]) -> Result<(), String> {
     let temp_name = format!(".{}_tmp", file_name.to_string_lossy());
     let temp_path = parent.join(temp_name);
 
-    // 1. Escribir a archivo temporal
     let mut temp_file = File::create(&temp_path).map_err(|e| format!("No se pudo crear archivo temporal: {}", e))?;
     temp_file.write_all(content).map_err(|e| format!("Error escribiendo archivo temporal: {}", e))?;
     temp_file.flush().map_err(|e| format!("Error en flush: {}", e))?;
     temp_file.sync_all().map_err(|e| format!("Error en sync_all: {}", e))?;
-    drop(temp_file); // Cerrar explícitamente antes del rename en Windows
+    drop(temp_file);
 
-    // 2. Atomic rename (mismo filesystem = atómico en Windows también)
     std::fs::rename(&temp_path, path).map_err(|e| {
-        // Intentar limpiar el temp si falla
         let _ = std::fs::remove_file(&temp_path);
         format!("Error en rename atómico: {}", e)
     })?;
@@ -78,25 +105,25 @@ fn atomic_write(path: &str, content: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// 1. Abrir documento desde argv (reemplaza get_open_args + fs.read)
-/// Lee el primer argumento de línea de comandos y abre el archivo
 #[tauri::command]
 async fn open_document_from_argv(state: State<'_, AppState>) -> Result<DocumentInfo, String> {
-    // Obtener el primer argumento (skip el nombre del ejecutable)
     let args: Vec<String> = std::env::args().skip(1).collect();
     let path = args.first().ok_or("No file argument in argv")?;
+    open_document_from_path(path.clone(), state).await
+}
 
-    let content = read_file(path)?;
-    let is_text = is_text_file(path);
+/// Abrir documento desde un path específico (usado por single-instance)
+#[tauri::command]
+async fn open_document_from_path(path: String, state: State<'_, AppState>) -> Result<DocumentInfo, String> {
+    let content = read_file(&path)?;
+    let is_text = is_text_file(&path);
 
-    // Extraer nombre del archivo
-    let file_name = Path::new(path)
+    let file_name = Path::new(&path)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("documento")
         .to_string();
 
-    // Generar token y guardar mapping
     let token = generate_token();
     {
         let mut docs = state.documents.lock().map_err(|e| e.to_string())?;
@@ -111,6 +138,21 @@ async fn open_document_from_argv(state: State<'_, AppState>) -> Result<DocumentI
     })
 }
 
+/// Obtener modo de apertura actual
+#[tauri::command]
+fn get_open_mode() -> Result<String, String> {
+    Ok(read_open_mode())
+}
+
+/// Guardar modo de apertura ("reuse" o "new_window")
+#[tauri::command]
+fn set_open_mode(mode: String) -> Result<(), String> {
+    let path = get_settings_path();
+    let val = serde_json::json!({ "open_mode": mode });
+    std::fs::write(path, val.to_string()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// 2. Guardar markdown (sobrescribe archivo existente usando token)
 #[tauri::command]
 async fn save_markdown(
@@ -118,76 +160,65 @@ async fn save_markdown(
     existing_token: Option<String>,
     content: String,
     state: State<'_, AppState>,
-) -> Result<String, String> {
-    let docs = state.documents.lock().map_err(|e| e.to_string())?;
+) -> Result<(), String> {
+    let lookup_token = existing_token.as_ref().unwrap_or(&token);
 
-    // Resolver token: existing_token tiene prioridad si es Some
-    let target_token = existing_token.unwrap_or(token.clone());
-    let path = docs.get(&target_token).ok_or("NotFound")?.clone();
-    drop(docs);
+    let path = {
+        let docs = state.documents.lock().map_err(|e| e.to_string())?;
+        docs.get(lookup_token)
+            .ok_or_else(|| "Token no encontrado. Use 'Guardar como...' primero.".to_string())?
+            .clone()
+    };
 
     atomic_write(&path, content.as_bytes())?;
-
-    Ok(path)
+    Ok(())
 }
 
-/// 3. Guardar como (Save As) — valida extensión, abre dialog, escribe atómico, guarda token
-/// Funciona incluso si `token` no existe en el estado (archivo abierto por picker HTML)
+/// 3. Guardar como (diálogo nativo + nuevo token)
 #[tauri::command]
 async fn save_markdown_as(
     token: String,
     content: String,
-    suggested_name: String,
+    suggested_name: Option<String>,
     state: State<'_, AppState>,
-) -> Result<SaveAsResult, String> {
-    // Validar extensión del nombre sugerido
-    let lower = suggested_name.to_lowercase();
-    if !lower.ends_with(".md") && !lower.ends_with(".markdown") {
-        return Err("Extensión inválida: solo se permiten .md o .markdown".into());
-    }
-
-    // Abrir dialog de guardar (Tauri v1 API)
-    let path = match FileDialogBuilder::new()
-        .set_file_name(&suggested_name)
+) -> Result<Option<SaveAsResult>, String> {
+    let dialog = FileDialogBuilder::new()
         .add_filter("Markdown", &["md", "markdown"])
-        .save_file()
-    {
-        Some(p) => p,
-        None => return Ok(SaveAsResult {
-            path: String::new(),
-            new_token: String::new(),
-        }), // Usuario canceló — resultado vacío, no es error
+        .add_filter("Todos los archivos", &["*"]);
+
+    let dialog = if let Some(ref name) = suggested_name {
+        dialog.set_file_name(name)
+    } else {
+        dialog
     };
 
-    let path_str = path.to_string_lossy().to_string();
+    let file_path = dialog.save_file();
 
-    // Validar extensión REAL del archivo seleccionado (el usuario puede escribir cualquier cosa)
-    let lower_path = path_str.to_lowercase();
-    if !lower_path.ends_with(".md") && !lower_path.ends_with(".markdown") {
-        return Err("Extensión inválida: el archivo debe terminar en .md o .markdown".into());
-    }
+    match file_path {
+        Some(path_buf) => {
+            let path_str = path_buf.to_string_lossy().to_string();
 
-    // Escritura atómica
-    atomic_write(&path_str, content.as_bytes())?;
+            atomic_write(&path_str, content.as_bytes())?;
 
-    // Generar NUEVO token para el archivo guardado
-    let new_token = generate_token();
-    {
-        let mut docs = state.documents.lock().map_err(|e| e.to_string())?;
-        // Si el token viejo existe en el estado, removerlo (ya no es necesario)
-        if !token.is_empty() {
-            docs.remove(&token);
+            let new_token = generate_token();
+            {
+                let mut docs = state.documents.lock().map_err(|e| e.to_string())?;
+                if !token.is_empty() {
+                    docs.remove(&token);
+                }
+                docs.insert(new_token.clone(), path_str.clone());
+            }
+
+            Ok(Some(SaveAsResult {
+                path: path_str,
+                new_token,
+            }))
         }
-        docs.insert(new_token.clone(), path_str.clone());
+        None => Ok(None),
     }
-
-    Ok(SaveAsResult {
-        path: path_str,
-        new_token,
-    })
 }
 
-/// 4. Cerrar documento — remover token del estado (idempotente)
+/// 4. Cerrar documento (limpia token del mapa)
 #[tauri::command]
 async fn close_document(token: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut docs = state.documents.lock().map_err(|e| e.to_string())?;
@@ -195,7 +226,7 @@ async fn close_document(token: String, state: State<'_, AppState>) -> Result<(),
     Ok(())
 }
 
-/// 5. Verificar si ventana está maximizada
+/// 5. Consultar si la ventana está maximizada
 #[tauri::command]
 async fn is_window_maximized(window: Window) -> Result<bool, String> {
     window.is_maximized().map_err(|e| e.to_string())
@@ -212,12 +243,12 @@ async fn expand_window_for_document(window: Window) -> Result<(), String> {
     let monitor_size = monitor.size();
     let monitor_pos = monitor.position();
 
-    let taskbar_margin = 50;
-    let target_height = monitor_size.height - taskbar_margin;
+    let taskbar_margin = 60;
+    let target_height = if monitor_size.height > taskbar_margin { monitor_size.height - taskbar_margin } else { 940 };
     let target_y = monitor_pos.y + 10;
 
     let current_size = window.inner_size().map_err(|e| e.to_string())?;
-    let target_width = if current_size.width < 1000 { 1000 } else { current_size.width };
+    let target_width = if current_size.width > 850 { current_size.width } else { 780 };
 
     let target_x = monitor_pos.x + (monitor_size.width as i32 - target_width as i32) / 2;
 
@@ -261,10 +292,14 @@ async fn close_window(window: Window) -> Result<(), String> {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let open_mode = read_open_mode();
+    let mut builder = tauri::Builder::default()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             open_document_from_argv,
+            open_document_from_path,
+            get_open_mode,
+            set_open_mode,
             save_markdown,
             save_markdown_as,
             close_document,
@@ -273,11 +308,27 @@ pub fn run() {
             minimize,
             toggle_maximize,
             close_window,
-        ])
+        ]);
+
+    if open_mode != "new_window" {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            if let Some(window) = app.get_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+
+            let _ = app.emit_all("single-instance-open", SingleInstancePayload {
+                args: argv,
+                cwd,
+            });
+        }));
+    }
+
+    builder
         .setup(|_app| {
             #[cfg(debug_assertions)]
             {
-                use tauri::Manager;
                 let window = _app.get_window("main").unwrap();
                 window.open_devtools();
             }

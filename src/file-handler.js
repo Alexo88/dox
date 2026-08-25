@@ -37,8 +37,8 @@ const FileHandler = {
         dropzone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropzone.classList.remove('drag-over');
-            const file = e.dataTransfer.files[0];
-            if (file) this.handleFile(file);
+            const files = Array.from(e.dataTransfer.files || []);
+            files.forEach(file => this.handleFile(file));
         });
 
         // Click en dropzone abre file picker
@@ -47,7 +47,8 @@ const FileHandler = {
         // Botón abrir
         btnOpen.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => {
-            if (e.target.files[0]) this.handleFile(e.target.files[0]);
+            const files = Array.from(e.target.files || []);
+            files.forEach(file => this.handleFile(file));
             fileInput.value = ''; // Reset para permitir re-seleccionar mismo archivo
         });
 
@@ -65,9 +66,9 @@ const FileHandler = {
         document.addEventListener('dragover', (e) => e.preventDefault());
         document.addEventListener('drop', (e) => {
             e.preventDefault();
-            const file = e.dataTransfer.files[0];
-            if (file && !dropzone.classList.contains('hidden')) return; // Ya manejado por dropzone
-            if (file) this.handleFile(file);
+            if (!dropzone.classList.contains('hidden')) return; // Ya manejado por dropzone
+            const files = Array.from(e.dataTransfer.files || []);
+            files.forEach(file => this.handleFile(file));
         });
 
         // Ctrl+O para abrir
@@ -78,73 +79,146 @@ const FileHandler = {
             }
         });
 
+        // Listener para single-instance ("Abrir con..." cuando la app ya está corriendo)
+        if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.event) {
+            window.__TAURI__.event.listen('single-instance-open', async (e) => {
+                const payload = e.payload;
+                if (!payload || !payload.args || payload.args.length < 2) return;
+                // Tomar primer argumento que sea un path de archivo (ignorar flags)
+                const path = payload.args.slice(1).find(arg => !arg.startsWith('-'));
+                if (!path) return;
+
+                try {
+                    const result = await window.__TAURI__.invoke('open_document_from_path', { path });
+                    if (result) {
+                        this._openFromDocumentInfo(result);
+                    }
+                } catch (err) {
+                    console.error('[Khipu] Error al abrir documento en single-instance:', err);
+                }
+            });
+        }
+
+        // Configuración de modo de apertura (Reusar ventana vs Nueva ventana)
+        this._initOpenModeToggle();
+
         // Leer argumento si se abrió con "Abrir con..." desde Explorer
         this._handleOpenWithArgv();
     },
 
     /**
-     * Lee el path pasado como argumento al abrir la app con un archivo
-     * (Windows: "Abrir con...", doble click si es predeterminado)
-     * Ahora usa open_document_from_argv que lee argv internamente y devuelve DocumentInfo
+     * Inicializa el toggle de preferencia Reusar ventana vs Nueva ventana
      */
-    async _handleOpenWithArgv() {
-        if (typeof window.__TAURI__ === 'undefined' ||
-            typeof window.__TAURI__.invoke === 'undefined') {
-            console.log('[Khipu] No Tauri — skip argv');
-            return;
+    async _initOpenModeToggle() {
+        if (!btnOpenMode) return;
+
+        let currentMode = 'reuse';
+        if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
+            try {
+                currentMode = await window.__TAURI__.invoke('get_open_mode');
+            } catch (e) {
+                currentMode = localStorage.getItem('khipu-open-mode') || 'reuse';
+            }
         }
 
-        try {
-            // open_document_from_argv lee argv internamente y abre el primer archivo
-            const result = await window.__TAURI__.invoke('open_document_from_argv');
-            console.log('[Khipu] open_document_from_argv result:', result);
+        const updateBtn = (mode) => {
+            if (mode === 'reuse') {
+                btnOpenMode.title = 'Modo: Reusar ventana en pestañas (Click para abrir en nueva ventana)';
+                btnOpenMode.textContent = '🗂️';
+            } else {
+                btnOpenMode.title = 'Modo: Abrir en nueva ventana (Click para reusar ventana)';
+                btnOpenMode.textContent = '🪟';
+            }
+        };
 
-            if (!result) {
-                console.log('[Khipu] No file argument in argv');
-                return;
+        updateBtn(currentMode);
+
+        btnOpenMode.addEventListener('click', async () => {
+            currentMode = currentMode === 'reuse' ? 'new_window' : 'reuse';
+            localStorage.setItem('khipu-open-mode', currentMode);
+
+            if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.invoke) {
+                try {
+                    await window.__TAURI__.invoke('set_open_mode', { mode: currentMode });
+                } catch (e) {
+                    console.error('[Khipu] Error guardando modo de apertura:', e);
+                }
             }
 
-            // Guardar token y nombre
-            this.currentDocumentToken = result.token;
-            this.currentFileName = result.file_name;
-            document.title = result.file_name + ' — Khipu Codex';
-            SearchEngine.reset();
-            dropzone.classList.add('hidden');
-            viewer.classList.remove('hidden');
+            updateBtn(currentMode);
+            Progress.show(
+                currentMode === 'reuse'
+                    ? '✅ Modo: Reusar ventana (Pestañas)'
+                    : '🪟 Modo: Abrir en nueva ventana',
+                100
+            );
+            setTimeout(Progress.hide, 1500);
+        });
+    },
 
-            if (result.is_text) {
-                const text = new TextDecoder('utf-8').decode(new Uint8Array(result.content));
-                const lowerName = result.file_name.toLowerCase();
-                if (lowerName.endsWith('.svg')) {
-                    // SVG — ruta independiente
-                    this.currentMarkdown = null;
-                    this.currentMarkdownName = null;
-                    this.isEditing = false;
-                    if (btnEdit) btnEdit.classList.add('hidden');
-                    if (markdownEditor) markdownEditor.classList.add('hidden');
-                    Progress.show('Renderizando SVG...', 100);
-                    this._openSvg(text, result.file_name);
-                } else {
-                    // Markdown
-                    this.currentMarkdownName = result.file_name;
-                    Progress.show('Renderizando...', 70);
-                    this._renderMarkdown(text);
-                }
-            } else {
-                // DOCX binario
+    /**
+     * Procesa y abre un documento a partir de DocumentInfo de Tauri
+     */
+    _openFromDocumentInfo(result) {
+        if (!result) return;
+
+        // Guardar token y nombre
+        this.currentDocumentToken = result.token;
+        this.currentFileName = result.file_name;
+        document.title = result.file_name + ' — Khipu Codex';
+        SearchEngine.reset();
+        dropzone.classList.add('hidden');
+        viewer.classList.remove('hidden');
+
+        if (result.is_text) {
+            const text = new TextDecoder('utf-8').decode(new Uint8Array(result.content));
+            const lowerName = result.file_name.toLowerCase();
+            if (lowerName.endsWith('.svg')) {
+                // SVG — ruta independiente
                 this.currentMarkdown = null;
                 this.currentMarkdownName = null;
                 this.isEditing = false;
                 if (btnEdit) btnEdit.classList.add('hidden');
                 if (markdownEditor) markdownEditor.classList.add('hidden');
+                Progress.show('Renderizando SVG...', 100);
+                this._openSvg(text, result.file_name);
+            } else {
+                // Markdown
+                this.currentMarkdownName = result.file_name;
+                Progress.show('Renderizando...', 70);
+                this._renderMarkdown(text);
+            }
+        } else {
+            // DOCX binario
+            this.currentMarkdown = null;
+            this.currentMarkdownName = null;
+            this.isEditing = false;
+            if (btnEdit) btnEdit.classList.add('hidden');
+            if (markdownEditor) markdownEditor.classList.add('hidden');
 
-                Progress.show('Procesando documento...', 50);
-                const uint8 = new Uint8Array(result.content);
-                const arrayBuffer = uint8.buffer.slice(0);
-                this.worker.postMessage(arrayBuffer, [arrayBuffer]);
+            Progress.show('Procesando documento...', 50);
+            const uint8 = new Uint8Array(result.content);
+            const arrayBuffer = uint8.buffer.slice(0);
+            this.worker.postMessage(arrayBuffer, [arrayBuffer]);
+        }
+    },
+
+    /**
+     * Lee el path pasado como argumento al abrir la app con un archivo
+     */
+    async _handleOpenWithArgv() {
+        if (typeof window.__TAURI__ === 'undefined' ||
+            typeof window.__TAURI__.invoke === 'undefined') {
+            return;
+        }
+
+        try {
+            const result = await window.__TAURI__.invoke('open_document_from_argv');
+            if (result) {
+                this._openFromDocumentInfo(result);
             }
         } catch (err) {
-            console.warn('[Khipu] Error al abrir archivo desde argumentos:', err);
+            // No file argument in argv — normal startup
         }
     },
 
