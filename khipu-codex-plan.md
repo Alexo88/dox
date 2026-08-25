@@ -1,5 +1,5 @@
 # Khipu Codex — Plan de Trabajo
-> Estado al: 2026-05-29 | Base: commit post-Batch 5
+> Estado al: 2026-08-25 | Base: v0.4.0 — Split View + Single-instance
 
 ---
 
@@ -12,7 +12,9 @@
 - ✅ Tema oscuro/claro persistido
 - ✅ Ventana frameless (Tauri v1)
 - ✅ Sanitización XSS en ambos paths
-- ✅ Build portable (KhipuCodex.html) + EXE nativo
+- ✅ Build EXE-only (100% Tauri, `public/index.html` vía `build.js`, sin `KhipuCodex.html`)
+- ✅ Single-instance: "Abrir con..." reutiliza ventana (toggle `reuse`/`new_window` en `settings.json` + `localStorage`)
+- ✅ Split View / Book Mode: comparación lado a lado con `VirtualScrollerInstance` por panel, toolbar Sync/Swap/Close, `Ctrl+\`, drag-to-split y divisor 20–80%
 
 ---
 
@@ -127,17 +129,32 @@ AnnotationLayer = {
 
 ---
 
-### Fase 5 — Visor SVG (1 sesión)
-*Feature nueva — tab para archivos `.svg`*
+### Fase 5 — Visor SVG (1 sesión) ✅ COMPLETA (v0.3.0)
+*Feature nueva — tab para archivos `.svg`* — implementada y verificada en v0.3.0 (sanitizador 6 pasos, path separado sin VirtualScroller).
 
-**Cómo:**
-- Agregar `.svg` al `accept` del `file-input` en `index.html`
-- En `FileHandler._openFile()`: detectar extensión `.svg` → path nuevo `_openSvg()`
-- `_openSvg()`: leer como text, sanitizar SVG (remover `<script>`, `on*`), insertar en viewer via `innerHTML`
-- No pasa por VirtualScroller (SVG es un solo elemento)
-- No pasa por `_renderHtml()` — path completamente separado
+---
 
-**Riesgo:** SVG sin sanitización es XSS. Requiere whitelist de tags SVG antes de insertar.
+### Fase 6 — Split View / Single-instance (v0.4.0) ✅ COMPLETA (2026-08-25)
+*Objetivo: comparación lado a lado y reutilización de ventana*
+
+**Entregado:**
+- `VirtualScroller` refactorizado a clase `VirtualScrollerInstance(container)` + singleton global para `#viewer`
+- `SplitManager` (isSplit, leftTabId/rightTabId, scrollers independientes, sync con `_suppressScroll`, swap, close, auto-maximizar)
+- DOM `#split-viewer` + `#split-panel-left/right` + `#viewer-left/right` + `#splitToolbar` + `#splitDropZone` + `.split-divider` 20–80%
+- Atajo `Ctrl+\` (`keyboard.js`), drag-to-split (tab `application/x-khipu-tab`, drop externo, hover 75%, divider), guía con 1 tab
+- Single-instance: `tauri-plugin-single-instance` condicional (`settings.json` `%APPDATA%/com.maudev.khipucodex/settings.json` + `localStorage` fallback), `single-instance-open` → `open_document_from_path`, toggle `btn-open-mode` (🗂️/🪟)
+- Iconos multi-resolución actualizados
+- Titlebar redesign descartado → registrado como known limitation / **wontfix** (se mantienen fixes quirúrgicos `-webkit-app-region`)
+- Build 100% Tauri (solo `public/index.html`, sin `KhipuCodex.html` portable)
+
+**Deuda técnica actualizada (post-v0.4.0):**
+| Item | Estado |
+|------|--------|
+| `app.js` monolítico | ✅ Resuelto en v0.3.0 (15 módulos) |
+| Parser MD frágil | ✅ Resuelto (marked.js) |
+| `KhipuCodex.html` portable | ✅ Eliminado (EXE-only, `archive/2026-07-28-reorient-exe-only`) |
+| Titlebar full rewrite | ⏭️ wontfix / known limitation (`archive/2026-08-25-titlebar-known-limitation`) |
+| Annotation sync en split | Pendiente menor — solo panel principal restaura canvas (por diseño) |
 
 ---
 

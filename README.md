@@ -9,6 +9,8 @@ Khipu Codex es una herramienta minimalista para leer, revisar y anotar documento
 ## Características
 
 - **Sistema de Pestañas:** Abrí múltiples documentos en una sola ventana. Navegación fluida y eficiente.
+- **Split View / Book Mode:** Compará dos documentos lado a lado con scroll sincronizado (Sync), intercambio de paneles (Swap), divisor redimensionable y atajo `Ctrl+\`. Drag & drop de pestañas o archivos al lateral para abrir en comparación.
+- **Single-instance (reusar ventana):** "Abrir con..." reutiliza la ventana existente y abre el archivo en una nueva pestaña. Toggle en la titlebar (🗂️ Reusar / 🪟 Nueva ventana) persistido en `settings.json` + `localStorage`.
 - **Interfaz Moderna:** Ventana *frameless* con título personalizado, estilo macOS/VS Code.
 - **Formatos:** `.docx`, `.md`, `.markdown`, `.svg` — todos nativos, sin plugins.
 - **Virtual Scrolling:** Renderizado inteligente que solo dibuja lo que ves en pantalla. Documentos de 500+ páginas sin que el navegador se cuelgue.
@@ -17,7 +19,8 @@ Khipu Codex es una herramienta minimalista para leer, revisar y anotar documento
 - **Búsqueda Inteligente (Ctrl+F):** Buscá texto en todas las secciones, con resaltado en tiempo real y navegación entre resultados.
 - **Modo Oscuro/Claro:** Interfaz que se adapta a tu preferencia visual y se persiste entre sesiones.
 - **100% Privacidad & Offline:** Tus documentos nunca salen de tu computadora. No requiere internet ni servidores externos.
-- **Open-with:** Soporte para "Abrir con..." desde el explorador de Windows.
+- **Open-with + Single-instance:** Soporte para "Abrir con..." desde el explorador de Windows con reutilización de ventana.
+- **100% Tauri (EXE-only):** Sin `KhipuCodex.html` portable — la app se distribuye exclusivamente como EXE (`public/index.html` vía `build.js`).
 
 ---
 
@@ -89,4 +92,4 @@ Requiere: Rust (Cargo), Node.js, Tauri CLI (`cargo install tauri-cli --version "
 
 ## Licencia
 
-**v0.3.0** — Hecho por **Maudev** — Pensado para la velocidad.
+**v0.4.0** — Hecho por **Maudev** — Pensado para la velocidad.
