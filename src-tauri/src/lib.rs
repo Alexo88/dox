@@ -98,8 +98,11 @@ fn atomic_write(path: &str, content: &[u8]) -> Result<(), String> {
     drop(temp_file);
 
     std::fs::rename(&temp_path, path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp_path);
-        format!("Error en rename atómico: {}", e)
+        format!(
+            "Error en rename atómico: {}. El archivo temporal se preservó en '{}' para recuperación manual.",
+            e,
+            temp_path.display()
+        )
     })?;
 
     Ok(())
@@ -160,7 +163,7 @@ async fn save_markdown(
     existing_token: Option<String>,
     content: String,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let lookup_token = existing_token.as_ref().unwrap_or(&token);
 
     let path = {
@@ -171,7 +174,7 @@ async fn save_markdown(
     };
 
     atomic_write(&path, content.as_bytes())?;
-    Ok(())
+    Ok(path)
 }
 
 /// 3. Guardar como (diálogo nativo + nuevo token)
