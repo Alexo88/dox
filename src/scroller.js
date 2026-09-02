@@ -14,6 +14,8 @@ class VirtualScrollerInstance {
         this.materialized = new Set();
         this._measuring = false;
         this.onMeasured = null;
+        this._idleId = null;
+        this._rafId = null;
     }
 
     _getViewer() {
@@ -71,12 +73,12 @@ class VirtualScrollerInstance {
 
             if (idx < total) {
                 if (typeof requestIdleCallback !== 'undefined') {
-                    requestIdleCallback(measureBatch);
+                    this._idleId = requestIdleCallback(measureBatch);
                 } else {
-                    requestAnimationFrame(() => measureBatch(null));
+                    this._rafId = requestAnimationFrame(() => measureBatch(null));
                 }
             } else {
-                requestAnimationFrame(() => {
+                this._rafId = requestAnimationFrame(() => {
                     this.elements.forEach((el, i) => {
                         if (this.sections[i]) {
                             this.sections[i].height = el.offsetHeight;
@@ -84,6 +86,8 @@ class VirtualScrollerInstance {
                     });
 
                     this._measuring = false;
+                    this._idleId = null;
+                    this._rafId = null;
                     this._dematerializeDistant();
                     this._setupObserver();
                     if (this.onMeasured) this.onMeasured();
@@ -92,9 +96,9 @@ class VirtualScrollerInstance {
         };
 
         if (typeof requestIdleCallback !== 'undefined') {
-            requestIdleCallback(measureBatch);
+            this._idleId = requestIdleCallback(measureBatch);
         } else {
-            measureBatch(null);
+            this._rafId = requestAnimationFrame(() => measureBatch(null));
         }
     }
 
@@ -224,6 +228,16 @@ class VirtualScrollerInstance {
      * Limpia observador y estado al cambiar o destruir tab.
      */
     destroy() {
+        if (this._idleId !== null && typeof cancelIdleCallback !== 'undefined') {
+            cancelIdleCallback(this._idleId);
+            this._idleId = null;
+        }
+        if (this._rafId !== null) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+        this._measuring = false;
+
         if (this.observer) {
             this.observer.disconnect();
             this.observer = null;

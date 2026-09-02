@@ -100,15 +100,18 @@ const AnnotationLayer = {
     _attachCanvas(el, idx) {
         if (el.querySelector('.ann-canvas')) return; // ya existe
 
+        const rect = el.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+
         const canvas = document.createElement('canvas');
         canvas.className = 'ann-canvas';
-        canvas.width = el.offsetWidth;
-        canvas.height = el.offsetHeight;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
         canvas.style.position = 'absolute';
         canvas.style.top = '0';
         canvas.style.left = '0';
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
         canvas.style.pointerEvents = this.enabled ? 'auto' : 'none';
         canvas.style.zIndex = '10';
 
@@ -117,14 +120,15 @@ const AnnotationLayer = {
 
         // Drawing handlers
         const ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
         this._restoreStrokes(ctx, idx);
 
         const getPos = (e) => {
-            const rect = canvas.getBoundingClientRect();
+            const cRect = canvas.getBoundingClientRect();
             const touch = e.touches ? e.touches[0] : e;
             return {
-                x: (touch.clientX - rect.left) * (canvas.width / rect.width),
-                y: (touch.clientY - rect.top) * (canvas.height / rect.height)
+                x: touch.clientX - cRect.left,
+                y: touch.clientY - cRect.top
             };
         };
 

@@ -13,7 +13,13 @@ importScripts('lib/mammoth.browser.min.js');
  * Recibe un ArrayBuffer (Transferable) y devuelve HTML.
  */
 self.onmessage = async function (e) {
-    const arrayBuffer = e.data;
+    const data = e.data;
+    const reqId = (data && typeof data === 'object' && !(data instanceof ArrayBuffer))
+        ? (data.id ?? data.requestId ?? null)
+        : null;
+    const arrayBuffer = (data && typeof data === 'object' && !(data instanceof ArrayBuffer))
+        ? (data.buffer || data.payload)
+        : data;
 
     try {
         // Convertir DOCX → HTML usando mammoth
@@ -33,6 +39,7 @@ self.onmessage = async function (e) {
 
         // Enviar resultado al hilo principal
         self.postMessage({
+            id: reqId,
             type: 'success',
             html: result.value,
             messages: result.messages // Warnings de mammoth
@@ -40,6 +47,7 @@ self.onmessage = async function (e) {
 
     } catch (err) {
         self.postMessage({
+            id: reqId,
             type: 'error',
             error: err.message || 'Error procesando el documento'
         });

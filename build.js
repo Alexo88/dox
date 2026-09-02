@@ -41,8 +41,8 @@ const markedSrc = fs.readFileSync(path.join(ROOT, 'lib', 'marked.min.js'), 'utf-
 // ─── Leer módulos src/ — concatenados en orden de dependencias ───
 const MODULE_ORDER = [
     'constants.js', 'dom-refs.js', 'theme.js', 'progress.js',
-    'markdown.js', 'sectionizer.js', 'scroller.js', 'search.js',
-    'tabs.js', 'annotation.js', 'svg-viewer.js', 'window.js', 'keyboard.js', 'file-handler.js', 'main.js'
+    'markdown.js', 'sanitizer.js', 'sectionizer.js', 'scroller.js', 'search.js',
+    'tabs.js', 'split.js', 'annotation.js', 'svg-viewer.js', 'window.js', 'keyboard.js', 'file-handler.js', 'main.js'
 ];
 const appJs = MODULE_ORDER.map(f =>
     fs.readFileSync(path.join(ROOT, 'src', f), 'utf-8')

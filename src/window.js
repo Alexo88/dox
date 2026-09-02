@@ -48,6 +48,17 @@ const WindowControls = {
                     }
                 }
             });
+
+            titlebar.addEventListener('dblclick', (e) => {
+                if (!e.target.closest('button, input, textarea, select, a, .tab, .tab-name, .tab-close, [data-no-drag]')) {
+                    window.__TAURI__.invoke('toggle_maximize')
+                        .then(() => {
+                            this.isMaximized = !this.isMaximized;
+                            this._updateMaximizeIcon();
+                        })
+                        .catch(err => console.error('toggle_maximize error:', err));
+                }
+            });
         }
 
         // Sincronizar isMaximized cuando la ventana cambia externamente (Win+↑, snap, etc.)

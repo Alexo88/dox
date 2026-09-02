@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.1 - 2026-09-02
+- **Auditoría & Bugfixes:**
+  - `save_markdown` (Rust/JS): Corregido tipo de retorno `Result<String, String>` en Rust y validación en `file-handler.js` para evitar excepción `TypeError: Cannot read properties of null` con `Ctrl+S`.
+  - Sanitizador HTML: Agregada whitelist explícita para Data URIs de imágenes (`png`, `jpeg`, `jpg`, `gif`, `webp`), permitiendo que los documentos DOCX rendericen sus imágenes embebidas.
+  - Web Worker: Implementado protocolo con `requestId` incremental en `file-handler.js` y `docx.worker.js` para prevenir race conditions al abrir múltiples archivos.
+  - `atomic_write`: Preservación de archivo temporal `temp_path` en fallos de renombrado en Windows para evitar pérdida de datos.
+  - Sincronización de token: Actualización inmediata de `documentToken` y `name` en el tab activo tras "Guardar Como".
+  - `VirtualScroller`: Limpieza y cancelación de `requestIdleCallback` / `requestAnimationFrame` en `destroy()`.
+  - `AnnotationLayer`: Escalado de canvas según `window.devicePixelRatio` para trazos nítidos en pantallas HiDPI.
+  - `WindowControls`: Soporte para maximizar/restaurar con doble clic en la barra de título (`#custom-titlebar`).
+- **Refactor Modular:**
+  - `SplitManager` extraído de `tabs.js` a `src/split.js` (225 líneas).
+  - `HtmlSanitizer` extraído de `file-handler.js` a `src/sanitizer.js` (71 líneas).
+  - `tabs.js` reducido a 248 líneas y `build.js` actualizado a 17 módulos en orden de dependencias.
+- **Herramientas de Dev:**
+  - Agregado script `dxv.bat` para iniciar el entorno de desarrollo directamente desde la raíz.
+
 ## v0.4.0 - 2026-08-25
 - **Single-instance (reusar ventana):** `tauri-plugin-single-instance` (git v1). Segunda apertura vía "Abrir con..." reutiliza la ventana existente (`unminimize/show/set_focus`) y abre el archivo como nueva pestaña vía `single-instance-open` → `open_document_from_path`. Modo configurable `reuse` / `new_window` persistido en `settings.json` (`%APPDATA%/com.maudev.khipucodex/settings.json`) + fallback `localStorage` (`khipu-open-mode`) con toggle `btn-open-mode` (🗂️/🪟) en titlebar. Plugin no registrado cuando `open_mode=new_window`. Derivado de `archive/2026-08-25-single-instance`.
 - **Split View / Book Mode:** `SplitManager` con dos `VirtualScrollerInstance` independientes (`viewerLeft`/`viewerRight`), DOM `#split-viewer` + `#split-panel-*` + `.split-divider` + `#split-drop-zone`, toolbar `#split-toolbar` con Sync/Swap/Close, auto-maximizado al entrar en split. `VirtualScroller` refactorizado a clase instanciable (`VirtualScrollerInstance(container)`) con instancia global `VirtualScroller` para `#viewer`; lógica container-aware (`_getViewer`, `_isContainerWindow`, `root: container`). Shortcuts `Ctrl+\` y drag-to-split (tab `application/x-khipu-tab` + drop de archivo externo + hover borde 75% + divider 20–80%). Con 1 tab muestra guía en vez de panel vacío. Derivado de `archive/2026-08-25-split-view`.

@@ -10,6 +10,7 @@ const createWorker = () => new Worker('docx.worker.js'); // DOCXLITE_WORKER
    ═══════════════════════════════════════════ */
 const FileHandler = {
     worker: null,
+    lastRequestId: 0,
     currentMarkdown: null,
     currentMarkdownName: null,
     currentFileName: null,
@@ -199,7 +200,8 @@ const FileHandler = {
             Progress.show('Procesando documento...', 50);
             const uint8 = new Uint8Array(result.content);
             const arrayBuffer = uint8.buffer.slice(0);
-            this.worker.postMessage(arrayBuffer, [arrayBuffer]);
+            const reqId = ++this.lastRequestId;
+            this.worker.postMessage({ id: reqId, buffer: arrayBuffer }, [arrayBuffer]);
         }
     },
 
@@ -251,8 +253,17 @@ const FileHandler = {
                         content: content
                     });
 
-                    this.currentFileName = savedPath.replace(/\\/g, '/').split('/').pop();
-                    document.title = this.currentFileName + ' — Khipu Codex';
+                    if (typeof savedPath === 'string') {
+                        this.currentFileName = savedPath.replace(/\\/g, '/').split('/').pop();
+                        this.currentMarkdownName = this.currentFileName;
+                        document.title = this.currentFileName + ' — Khipu Codex';
+
+                        const activeTab = TabManager.getActiveTab();
+                        if (activeTab) {
+                            activeTab.name = this.currentFileName;
+                            TabManager._renderTabBar();
+                        }
+                    }
                 } else {
                     // No hay token (archivo abierto por file picker) — Save As dialog
                     await this._saveMarkdownAs(content, name);
@@ -293,8 +304,18 @@ const FileHandler = {
 
                 this.currentDocumentToken = result.new_token;
                 this.currentFileName = result.path.replace(/\\/g, '/').split('/').pop();
+                this.currentMarkdownName = this.currentFileName;
                 document.title = this.currentFileName + ' — Khipu Codex';
-                saveMarkdownVersion(suggestedName, content);
+
+                // Actualizar inmediatamente documentToken y name en el objeto tab activo
+                const activeTab = TabManager.getActiveTab();
+                if (activeTab) {
+                    activeTab.documentToken = result.new_token;
+                    activeTab.name = this.currentFileName;
+                    TabManager._renderTabBar();
+                }
+
+                saveMarkdownVersion(this.currentFileName, content);
                 Progress.show('✅ Guardado como', 100);
                 setTimeout(Progress.hide, 1200);
                 console.log('[Khipu] Markdown guardado como:', result.path);
@@ -385,8 +406,9 @@ const FileHandler = {
         reader.onload = (e) => {
             Progress.show('Procesando documento...', 50);
             const arrayBuffer = e.target.result;
+            const reqId = ++this.lastRequestId;
             // Transferir al Worker (zero-copy)
-            this.worker.postMessage(arrayBuffer, [arrayBuffer]);
+            this.worker.postMessage({ id: reqId, buffer: arrayBuffer }, [arrayBuffer]);
         };
         reader.onerror = () => {
             Progress.show('Error al leer el archivo', 0);
@@ -446,7 +468,21 @@ const FileHandler = {
             AnnotationLayer.load(this.currentMarkdownName);
         }
 
-        this._renderHtml(marked.parse(sourceText));
+        // Manejar front matter YAML si existe
+        let markdownContent = sourceText;
+        if (markdownContent.startsWith('---')) {
+            const endIdx = markdownContent.indexOf('\n---', 3);
+            if (endIdx !== -1) {
+                markdownContent = markdownContent.slice(endIdx + 4).trimStart();
+            }
+        }
+
+        const parsedHtml = marked.parse(markdownContent, {
+            gfm: true,
+            breaks: true
+        });
+
+        this._renderHtml(parsedHtml);
     },
 
     _openSvg(svgText, fileName) {
@@ -496,70 +532,8 @@ const FileHandler = {
         }, 100);
     },
 
-    /**
-     * Sanitiza HTML contra XSS usando una política allowlist.
-     * No depende de marked ni de DOMPurify — opera sobre el HTML ya generado.
-     *
-     * Elimina elementos activos, atributos inline peligrosos y
-     * restringe protocolos en URLs. No confía en marked como frontera de seguridad.
-     */
     _sanitizeHtml(html) {
-        const BLOCKED_TAGS = [
-            'script', 'style', 'iframe', 'object', 'embed', 'form',
-            'input', 'button', 'textarea', 'select', 'option', 'optgroup',
-            'meta', 'base', 'link', 'noscript', 'svg', 'math'
-        ];
-        const DANGEROUS_ATTRS = [
-            'srcdoc', 'formaction', 'formmethod', 'formenctype',
-            'action', 'data', 'xlink:href', 'autofocus'
-        ];
-        const SAFE_PROTOCOLS = ['http://', 'https://', 'mailto:', '#', '/'];
-        const URL_ATTRS = ['href', 'src', 'srcset'];
-
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-
-        // 1. Remover elementos activos/peligrosos
-        BLOCKED_TAGS.forEach(tag => {
-            doc.querySelectorAll(tag).forEach(el => el.remove());
-        });
-
-        // 2. Remover atributos inline peligrosos y handlers de eventos
-        doc.querySelectorAll('*').forEach(el => {
-            Array.from(el.attributes).forEach(attr => {
-                const name = attr.name.toLowerCase();
-                if (name.startsWith('on')) {
-                    el.removeAttribute(attr.name);
-                } else if (DANGEROUS_ATTRS.includes(name)) {
-                    el.removeAttribute(attr.name);
-                }
-            });
-        });
-
-        // 3. Restringir protocolos en href, src, srcset
-        doc.querySelectorAll('*').forEach(el => {
-            URL_ATTRS.forEach(attr => {
-                const val = el.getAttribute(attr);
-                if (!val) return;
-                const isSafe = SAFE_PROTOCOLS.some(p => val.toLowerCase().startsWith(p));
-                if (!isSafe) el.removeAttribute(attr);
-            });
-        });
-
-        // 4. Agregar rel="noopener noreferrer" a enlaces externos
-        doc.querySelectorAll('a[href]').forEach(a => {
-            const href = a.getAttribute('href') || '';
-            if (/^https?:\/\//i.test(href)) {
-                const rel = a.getAttribute('rel') || '';
-                const extras = ['noopener', 'noreferrer'];
-                extras.forEach(r => {
-                    if (!rel.split(/\s+/).includes(r)) {
-                        a.setAttribute('rel', (rel + ' ' + r).trim());
-                    }
-                });
-            }
-        });
-
-        return doc.body.innerHTML;
+        return HtmlSanitizer.sanitize(html);
     },
 
     _renderHtml(html, messages) {
@@ -592,6 +566,15 @@ const FileHandler = {
      * Respuesta del Worker
      */
     _onWorkerMessage(data) {
+        if (!data) return;
+
+        // Descartar respuestas obsoletas que no correspondan al request activo
+        const resId = data.id ?? data.requestId;
+        if (resId !== undefined && resId !== null && resId !== this.lastRequestId) {
+            console.warn(`[Khipu] Descartando respuesta de worker obsoleta (id: ${resId}, actual: ${this.lastRequestId})`);
+            return;
+        }
+
         if (data.type === 'error') {
             Progress.show('Error: ' + data.error, 0);
             setTimeout(Progress.hide, 3000);
