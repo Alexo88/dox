@@ -43,7 +43,8 @@ Plan (Context→Goal→Constraints→Tasks→Acceptance→Risks→Validation) �
 
 ## Git
 - Conventional commits (`feat:`/`fix:`/`BREAKING CHANGE:`). No AI attribution.
-- Commit after each completed task/fix. `npm run release` → version+CHANGELOG+tag.
+- Commit after each completed task/fix.
+- Release (no hay package.json — proceso manual): `node build.js` + `cd src-tauri && cargo tauri build` + bump manual de `version` en `src-tauri/tauri.conf.json` + entrada en CHANGELOG.md + tag.
 
 ## Project Rules
 - `.agents/rules/` contains living project-specific knowledge and safety constraints.
