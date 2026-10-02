@@ -1,4 +1,15 @@
-# Worker Message Protocol Specification
+# Delta for worker-message-protocol
+
+> **DRAFT — NO CANÓNICA. NO IMPLEMENTADA.**
+> Esta capability fue withdraw de `openspec/specs/` el 2026-09-02 porque estaba
+> mergeada mientras el change `worker-race-recovery` que la implementa nunca arrancó
+> (0/24 tareas). Una spec canónica sin implementación es deuda que confunde a cualquier
+> agente que la lea. Vuelve a `openspec/specs/` solo cuando `/sdd-archive` mergee este
+> delta tras verificar el change. Estado real: `changes/worker-race-recovery/tasks.md`.
+>
+> Cambio Modificado respecto de lo canónico: la capability pasa de "canónica" a "propuesta".
+
+## MODIFIED Requirements
 
 ## Purpose
 
