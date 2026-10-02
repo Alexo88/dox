@@ -20,9 +20,16 @@ IF EXIST "%EXE_DEBUG%" (
     exit /b 0
 )
 
-echo [ERROR] No se encontro Khipu Codex.exe
+echo [ERROR] No se encontro el binario de Khipu Codex
+echo.
+echo Se busca app.exe en:
+echo   %EXE_RELEASE%
+echo   %EXE_DEBUG%
 echo.
 echo Para compilar la version nativa:
 echo   cd src-tauri ^&^& cargo tauri build
+echo.
+echo O usar el lanzador de desarrollo, que compila y arranca:
+echo   dxv.bat
 pause
 exit /b 1

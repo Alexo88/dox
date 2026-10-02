@@ -9,16 +9,25 @@ context: |
     - CSS custom properties (dark/light theming, no preprocessor)
 
   Architecture:
-    - Single-page app: index.html + app.js + style.css + docx.worker.js
-    - Monolithic app.js (~1430 lines) with object-literal modules:
-      ThemeManager, Progress, Sectionizer, VirtualScroller, SearchEngine,
-      TabManager, WindowControls, FileHandler, KeyboardShortcuts
-    - Web Worker (docx.worker.js) runs mammoth.js off-main-thread
-    - VirtualScroller: IntersectionObserver-based lazy DOM with section chunking (20 nodes/section)
+    - Single-page app: index.html + style.css + src/*.js (17 modules) + docx.worker.js
+    - ES modules in src/, one concern each: main, constants, dom-refs, theme, progress,
+      sectionizer, scroller, search, tabs, split, file-handler, markdown, keyboard,
+      window, sanitizer, annotation, svg-viewer
+    - No monolithic app.js — deleted in commit b5079ee (v0.3.0)
+    - Web Worker (docx.worker.js) runs mammoth.js off-main-thread, correlated with a
+      monotonic requestId to discard stale responses
+    - VirtualScroller: IntersectionObserver-based lazy DOM with section chunking;
+      instantiable as VirtualScrollerInstance(container) so Split View gets two
+      independent scrollers; cleanup of rIC/rAF on destroy()
     - TabManager: lazy DOM save/restore per tab (no active DOM for inactive tabs)
-    - Build: node build.js → KhipuCodex.html (portable) + public/index.html (Tauri)
-    - Rust backend: 6 tauri::commands (get_open_args, expand_window_for_document,
-      reset_window_size, minimize, toggle_maximize, close_window)
+    - Build: node build.js concatenates the 17 src modules in dependency order and
+      inlines mammoth + marked + the worker into public/index.html — EXE-only,
+      no portable KhipuCodex.html since v0.3.0
+    - Rust backend: 12 tauri::commands (open_document_from_argv, open_document_from_path,
+      get_open_mode, set_open_mode, save_markdown, save_markdown_as, close_document,
+      is_window_maximized, expand_window_for_document, minimize, toggle_maximize, close_window)
+    - Single-instance plugin (tauri-plugin-single-instance) registered conditionally on
+      open_mode != new_window; reads %APPDATA%/com.maudev.khipucodex/settings.json
 
   Testing:
     - No test runner, no test framework, no test files found
@@ -27,38 +36,42 @@ context: |
 
   Style:
     - Spanish comments and UI strings (user-facing language is Spanish)
-    - Object-literal module pattern (no classes, no ES modules in production)
+    - ES modules, one file per concern; classes where state warrants it
+      (VirtualScrollerInstance, SplitManager)
     - CSS custom properties for theming
     - Inline SVG icons (no icon library)
-    - Zero runtime dependencies (mammoth.js is the only vendor lib)
+    - Runtime vendor libs in lib/: mammoth.browser.min.js + marked.min.js
 
-  Known debt (from khipu-codex-plan.md):
-    - app.js monolítico (1390+ lines)
-    - Custom MD parser fragile (no tables, nested lists, images in MD)
-    - saveMarkdownVersion() orphaned outside any module
-    - README.md says "DocxLite" (outdated rename)
-    - dx.bat error message says "DocxLite"
-    - CHANGELOG.md stuck at v0.2.0
-    - tauri.conf.json has unnecessary process: { all: true }
-    - No save-to-disk for MD editor (localStorage only)
+  Known debt (verified 2026-09-02, from ROADMAP.md):
+    - Annotations never restore in Split View panels (scroller.js _isContainerWindow gate;
+      split.js has no AnnotationLayer refs)
+    - MD backup uses version history khipu-md:${name}, not the khipu-md:nombre:backup key
+      the old plan specified
+    - No browser save fallback (deliberate: EXE-only since v0.3.0, see file-handler.js)
+    - openspec/changes/worker-race-recovery not started (0/24 tasks)
+    - openspec/changes/security-c-csp missing tasks 5.1/5.2 (commit scope)
+    - openspec/changes/security-d-svg-viewer missing manual verification 3.3-3.5
+    - No test runner (see Testing below)
 
 rules:
   proposal:
     - Include rollback plan for risky changes
-    - Reference specific line ranges in app.js when proposing modifications
+    - Reference specific files and line ranges in src/*.js when proposing modifications
+      (app.js no longer exists — it was split into 17 modules in v0.3.0)
   specs:
     - Use Given/When/Then for scenarios
     - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
   design:
     - Document architecture decisions with rationale
-    - For app.js refactors, show before/after module structure
+    - For module refactors, show before/after module structure
   tasks:
     - Group by phase, use hierarchical numbering
     - Keep tasks completable in one session
     - Never touch more than 3 files per task without splitting
   apply:
-    - Follow existing code patterns (object-literal modules, Spanish comments)
+    - Follow existing code patterns (ES modules, Spanish comments)
     - Preserve build marker comments (DOCXLITE:STYLE_START, DOCXLITE:SCRIPTS_START, etc.)
+      — still present in build.js and load-bearing
     - Do NOT rename "DocxLite" references unless the task explicitly requires it
   tdd: false
   test_command: ""
